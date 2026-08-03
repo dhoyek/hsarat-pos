@@ -18,6 +18,8 @@
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
 body{font-family:'Segoe UI','Noto Sans Arabic','Dubai',Tahoma,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:16px;overflow:hidden}
+#app{min-height:0}
+header{position:relative;z-index:5}
 button,input,select,textarea{font-family:inherit;font-size:inherit}
 button{cursor:pointer;border:none;background:none}
 input,select,textarea{width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;background:#fff;outline:none}
@@ -63,6 +65,10 @@ main{flex:1;overflow:hidden;position:relative}
 .sums .r{display:flex;justify-content:space-between;align-items:baseline;padding:2px 0}
 .sums .r b{font-size:22px;color:var(--green);direction:ltr}
 .sums .r.lbp b{font-size:17px;color:var(--gold)}
+.noshift{display:none;align-items:center;gap:10px;padding:10px 12px;background:var(--redL);border-top:1px solid #F3B7BF}
+.noshift.on{display:flex}
+.noshift span{flex:1;font-size:14px;font-weight:700;color:#7A0016;line-height:1.4}
+.noshift button{background:var(--green);color:#fff;border-radius:10px;padding:10px 16px;font-weight:800;font-size:15px;white-space:nowrap}
 .payrow{display:flex;gap:8px;padding:8px 12px 12px}
 .btn{padding:14px;border-radius:12px;font-weight:800;font-size:17px;text-align:center}
 .btn.main{flex:1;background:var(--green);color:#fff}
@@ -117,6 +123,14 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
 .quick{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
 .quick button{padding:10px 2px;border-radius:10px;background:var(--greenL);color:var(--green);font-weight:700;font-size:14px;direction:ltr}
 .big{font-size:25px;font-weight:800;text-align:center;direction:ltr;padding:12px}
+.pinbox{display:flex;justify-content:center;gap:10px;margin:10px 0 16px}
+.pinbox i{width:16px;height:16px;border-radius:50%;border:2px solid var(--green);display:block}
+.pinbox i.f{background:var(--green)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:300px;margin:0 auto;direction:ltr}
+.pad button{padding:16px 0;border-radius:12px;background:var(--greenL);color:var(--green);font-size:23px;font-weight:800;direction:ltr}
+.pad button.alt{background:var(--bg);color:var(--mut);font-size:16px}
+.lockp{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:5px 10px;font-size:13px;color:#fff}
+.lockp.open{background:#8A6D1F;border-color:#C9A24A}
 .nums{display:flex;flex-wrap:wrap;gap:5px;max-height:150px;overflow:auto;padding:8px;background:var(--bg);border-radius:10px;margin-bottom:8px;min-height:44px}
 .nums span{background:#fff;border:1.5px solid var(--line);border-radius:8px;padding:4px 8px;font-size:14px;direction:ltr;font-weight:700}
 .nums span.ok{border-color:#0B6B32;background:#DDF2E3;color:#0B6B32}
@@ -156,6 +170,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
 <div id="app">
   <header>
     <div class="ttl" id="hTitle">نقطة بيع<small id="hSub">—</small></div>
+    <button class="lockp" id="hLock" style="display:none">🔒</button>
     <div class="pill" id="hRate">—</div>
     <div class="pill" id="hShift">—</div>
   </header>
@@ -179,6 +194,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
           <div class="r"><span>المجموع</span><b id="totUsd">$0.00</b></div>
           <div class="r lbp"><span>بالليرة</span><b id="totLbp">0 ل.ل.</b></div>
         </div>
+        <div class="noshift" id="noShift"><span>لا توجد وردية مفتوحة — لا يمكن القبض قبل فتحها.</span><button id="openShiftBtn">افتح وردية</button></div>
         <div class="payrow"><button class="btn main" id="payBtn" disabled>قبض وطباعة</button></div>
       </div>
     </div>
@@ -204,7 +220,7 @@ let STORAGE_OK=true, MEM=null;
 const DEFAULTS=()=>({
   settings:{club:'نادي حصارات الرياضي الثقافي الاجتماعي',event:'الدورة الرياضية 2026',
     rate:89500,commission:10,showLbp:true,
-    footer:'تُسلَّم هذه القسيمة للكشك — لا تُستبدل بنقد',lastBackup:null},
+    footer:'تُسلَّم هذه القسيمة للكشك — لا تُستبدل بنقد',lastBackup:null,pin:''},
   kiosks:[{id:'k1',name:'كشك المأكولات'},{id:'k2',name:'كشك المشروبات'},{id:'k3',name:'كشك الحلويات'}],
   products:[
     {id:'p1',name:'شطيرة لحم',price:4,kiosk:'k1',on:true},
@@ -221,6 +237,8 @@ const DEFAULTS=()=>({
   sales:[],shifts:[],settlements:[],seq:1000,vseq:1,sseq:0
 });
 let S=null, cart=[], filterK='all';
+let unlocked=false, idleTimer=null;
+const PROT=['stl','rep','set'];
 
 /* ---------- storage (durable) ---------- */
 function probe(){ try{ localStorage.setItem('__p','1'); localStorage.removeItem('__p'); return true; }catch(e){ return false; } }
@@ -295,6 +313,71 @@ function vStatus(v){
   return {t:'غير مسوّاة',c:'y'};
 }
 
+/* ---------- lock ---------- */
+const hasPin=()=>!!(S.settings.pin&&String(S.settings.pin).length);
+const isLocked=()=>hasPin()&&!unlocked;
+function applyLock(){
+  const L=isLocked();
+  PROT.forEach(t=>{
+    const b=document.querySelector(`nav button[data-t="${t}"]`);
+    if(b) b.style.display=L?'none':'';
+  });
+  const cur=document.querySelector('nav button.on');
+  if(L&&cur&&PROT.includes(cur.dataset.t)) document.querySelector('nav button[data-t="sell"]').click();
+  const lp=$('#hLock');
+  lp.style.display=hasPin()?'':'none';
+  lp.textContent=L?'🔒':'🔓';
+  lp.className='lockp'+(L?'':' open');
+  lp.title=L?'فتح الوضع الإداري':'قفل';
+}
+function lockNow(){ unlocked=false; applyLock(); renderHeader(); }
+function touchIdle(){
+  if(!unlocked||!hasPin())return;
+  clearTimeout(idleTimer);
+  idleTimer=setTimeout(()=>{ if(unlocked){ lockNow(); } }, 180000);
+}
+['click','touchstart','keydown'].forEach(ev=>document.addEventListener(ev,touchIdle,{passive:true}));
+function askPin(onOK){
+  let buf='';
+  sheet(`<h2>الوضع الإداري</h2>
+    <div class="mini" style="text-align:center;margin-bottom:4px">أدخل الرمز المكوّن من أربعة أرقام</div>
+    <div class="pinbox" id="pb"><i></i><i></i><i></i><i></i></div>
+    <div class="big" id="pmsg" style="font-size:14px;padding:0 0 8px;color:var(--red)"></div>
+    <div class="pad" id="pad"></div>
+    <div style="margin-top:12px"><button class="btn ghost" style="width:100%" onclick="closeSheet()">إلغاء</button></div>
+    <div class="mini" style="text-align:center;margin-top:10px">نسيت الرمز؟ اكتب كلمة <b>حصارات</b> في مكان الأرقام عبر لوحة المفاتيح.</div>`);
+  const pad=$('#pad');
+  const draw=()=>{ document.querySelectorAll('#pb i').forEach((e,i)=>e.className=i<buf.length?'f':''); };
+  const press=v=>{
+    if(v==='<'){ buf=buf.slice(0,-1); draw(); return; }
+    if(buf.length>=4) return;
+    buf+=v; draw();
+    if(buf.length===4){
+      setTimeout(()=>{
+        if(buf===String(S.settings.pin)){ unlocked=true; closeSheet(); applyLock(); renderHeader(); touchIdle(); onOK&&onOK(); }
+        else{ buf=''; draw(); $('#pmsg').textContent='رمز غير صحيح'; }
+      },120);
+    }
+  };
+  '123456789'.split('').forEach(d=>{const b=el('button','',d);b.onclick=()=>press(d);pad.appendChild(b);});
+  const sp=el('button','alt',' '); sp.style.visibility='hidden'; pad.appendChild(sp);
+  const z=el('button','','0'); z.onclick=()=>press('0'); pad.appendChild(z);
+  const bk=el('button','alt','مسح'); bk.onclick=()=>press('<'); pad.appendChild(bk);
+  const kh=e=>{
+    if(e.key>='0'&&e.key<='9') press(e.key);
+    else if(e.key==='Backspace') press('<');
+  };
+  document.addEventListener('keydown',kh);
+  // escape hatch: type the recovery word
+  let word='';
+  const wh=e=>{ if(e.key.length===1&&/[\u0600-\u06FF]/.test(e.key)){ word=(word+e.key).slice(-6);
+    if(word==='حصارات'){ unlocked=true; closeSheet(); applyLock(); renderHeader(); alert('فُتح الوضع الإداري. يُستحسن تغيير الرمز من الإعدادات.'); onOK&&onOK(); } } };
+  document.addEventListener('keydown',wh);
+  const mo=new MutationObserver(()=>{ if(!$('#mask').classList.contains('on')){
+    document.removeEventListener('keydown',kh); document.removeEventListener('keydown',wh); mo.disconnect(); } });
+  mo.observe($('#mask'),{attributes:true});
+}
+
 /* ---------- header / tabs ---------- */
 function renderHeader(){
   $('#hTitle').childNodes[0].nodeValue=S.settings.club;
@@ -307,9 +390,11 @@ function renderHeader(){
   const n=S.kiosks.reduce((a,k)=>a+outstanding(k.id).length,0);
   const b=document.querySelector('nav button[data-t="stl"]');
   b.innerHTML='التسوية'+(n?` <span class="dot">${n}</span>`:'');
+  $('#hLock').onclick=()=>{ isLocked()? askPin() : lockNow(); };
 }
 document.querySelectorAll('nav button').forEach(b=>{
   b.onclick=()=>{
+    if(PROT.includes(b.dataset.t)&&isLocked()){ askPin(()=>b.click()); return; }
     document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
     b.classList.add('on');
     ['sell','vch','stl','rep','set'].forEach(t=>$('#'+t).classList.toggle('on',t===b.dataset.t));
@@ -360,11 +445,13 @@ function renderCart(){
   $('#totLbp').textContent=lbpTxt(t*S.settings.rate);
   $('#totLbp').parentElement.style.display=S.settings.showLbp?'flex':'none';
   $('#payBtn').disabled=!cart.length;
+  $('#noShift').classList.toggle('on',!openShift());
   saveCart();
 }
 const cartTotal=()=>cart.reduce((a,c)=>a+c.price*c.qty,0);
 $('#clearCart').onclick=()=>{if(cart.length&&confirm('إفراغ السلة؟')){cart=[];renderCart();}};
-$('#payBtn').onclick=()=>{ if(!openShift()){alert('افتح وردية أولاً من الزرّ في الأعلى.');return;} payDialog(); };
+$('#openShiftBtn').onclick=()=>shiftDialog();
+$('#payBtn').onclick=()=>{ if(!openShift()){ shiftDialog(); return; } payDialog(); };
 
 function payDialog(){
   const t=cartTotal(), r=Number(S.settings.rate);
@@ -752,7 +839,7 @@ function shiftDialog(){
       S.shifts.push({id:uid('s'),openedAt:nowISO(),closedAt:null,
         floatUsd:Number($('#fu').value)||0,floatLbp:Number($('#fl').value)||0,
         who:$('#fn').value.trim(),countUsd:null,countLbp:null});
-      save();closeSheet();renderHeader();};
+      save();closeSheet();renderHeader();renderCart();};
   }else{
     const ss=S.sales.filter(x=>x.shift===sh.id);
     const t=ss.reduce((a,x)=>a+x.total,0);
@@ -772,7 +859,7 @@ function shiftDialog(){
       e.style.color=(Math.abs(du)<0.01&&Math.abs(dv)<1000)?'var(--green)':'var(--red)';};
     $('#cu').oninput=upd;$('#cl').oninput=upd;
     $('#ok').onclick=()=>{sh.closedAt=nowISO();sh.countUsd=Number($('#cu').value)||0;
-      sh.countLbp=Number($('#cl').value)||0;save();closeSheet();renderHeader();
+      sh.countLbp=Number($('#cl').value)||0;save();closeSheet();renderHeader();renderCart();
       if(confirm('أُقفلت الوردية.\nهل تريد حفظ نسخة احتياطية على القرص الآن؟'))exportJSON();};
   }
 }
@@ -794,6 +881,19 @@ function renderSettings(){
       <div class="fld"><label>عبارة أسفل القسيمة</label><input id="s_ft" value="${esc(st.footer)}"></div>
       <div class="fld"><label><input type="checkbox" id="s_lbp" ${st.showLbp?'checked':''} style="width:auto;margin-left:6px">إظهار المبالغ بالليرة</label></div>
       <button class="btn main" id="saveSet">حفظ</button></div>
+
+    <div class="card"><h3><span>الرمز الإداري</span></h3>
+      <div class="mini" style="margin-bottom:10px">
+        عند تفعيله تختفي تبويبات <b>التسوية والتقارير والإعدادات</b> عن البائع، ويظهر قفل في الأعلى.
+        البيع والقسائم والورديات تبقى متاحة للجميع بلا رمز.
+        ${hasPin()?'الوضع الإداري يُقفل تلقائياً بعد ٣ دقائق بلا استعمال.':'<b style="color:var(--red)">غير مفعّل حالياً — أي شخص يستطيع تعديل الأسعار ومسح البيانات.</b>'}
+      </div>
+      <div class="row2">
+        <div class="fld"><label>رمز من ٤ أرقام</label><input id="s_pin" class="num" type="tel" inputmode="numeric" maxlength="4" placeholder="${hasPin()?'••••':'مثلاً 1234'}" value="${esc(st.pin||'')}"></div>
+        <div class="fld"><label>&nbsp;</label><button class="btn ghost" id="pinSave" style="width:100%">${hasPin()?'تغيير':'تفعيل'}</button></div>
+      </div>
+      ${hasPin()?'<button class="btn ghost" id="pinOff" style="width:100%;color:var(--red);border-color:#F3B7BF">إلغاء الرمز</button>':''}
+    </div>
 
     <div class="card"><h3><span>الأكشاك</span></h3><div class="list" id="klist"></div>
       <div class="row2" style="margin-top:10px"><input id="kn" placeholder="اسم كشك جديد"><button class="btn ghost" id="kadd">إضافة</button></div></div>
@@ -826,6 +926,17 @@ function renderSettings(){
     st.rate=Number($('#s_rate').value)||st.rate; st.commission=Number($('#s_com').value)||0;
     st.footer=$('#s_ft').value; st.showLbp=$('#s_lbp').checked;
     save();renderHeader();renderCart();alert('حُفظ.');};
+
+  $('#pinSave').onclick=()=>{
+    const v=$('#s_pin').value.trim();
+    if(!/^\d{4}$/.test(v)){ alert('الرمز يجب أن يكون أربعة أرقام.'); return; }
+    st.pin=v; save(); unlocked=true; applyLock(); renderHeader(); renderSettings();
+    alert('فُعّل الرمز: '+v+'\nاكتبه في مكان آمن. إن نُسي، تُكتب كلمة "حصارات" في شاشة الرمز لفتحه.');
+  };
+  if($('#pinOff')) $('#pinOff').onclick=()=>{
+    if(!confirm('إلغاء الرمز؟ ستصبح كل التبويبات مفتوحة للجميع.'))return;
+    st.pin=''; save(); unlocked=false; applyLock(); renderHeader(); renderSettings();
+  };
 
   const kl=$('#klist');kl.innerHTML='';
   S.kiosks.forEach(k=>{
@@ -886,7 +997,7 @@ function exportJSON(){
 
 /* =============== BOOT =============== */
 load();
-renderHeader();renderKbar();renderGrid();renderCart();
+renderHeader();applyLock();renderKbar();renderGrid();renderCart();
 window.closeSheet=closeSheet;
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
