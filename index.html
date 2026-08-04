@@ -220,7 +220,7 @@ let STORAGE_OK=true, MEM=null;
 const DEFAULTS=()=>({
   settings:{club:'نادي حصارات الرياضي الثقافي الاجتماعي',event:'الدورة الرياضية 2026',
     rate:89500,commission:10,showLbp:true,
-    footer:'تُسلَّم هذه القسيمة للكشك — لا تُستبدل بنقد',lastBackup:null,pin:''},
+    footer:'تُسلَّم هذه القسيمة للكشك — لا تُستبدل بنقد',lastBackup:null,pin:'',voidPin:'',station:'A'},
   kiosks:[{id:'k1',name:'كشك المأكولات'},{id:'k2',name:'كشك المشروبات'},{id:'k3',name:'كشك الحلويات'}],
   products:[
     {id:'p1',name:'شطيرة لحم',price:4,kiosk:'k1',on:true},
@@ -287,6 +287,7 @@ function fmtDT(iso){const d=new Date(iso);return `${p2(d.getDate())}/${p2(d.getM
 function fmtD(iso){const d=new Date(iso);return `${p2(d.getDate())}/${p2(d.getMonth()+1)}/${d.getFullYear()}`;}
 function dayKey(iso){const d=new Date(iso);return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;}
 const openShift=()=>S.shifts.find(s=>!s.closedAt)||null;
+const STN=()=>String(S.settings.station||'A').toUpperCase().slice(0,2);
 const uid=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 function daysAgo(iso){ return Math.floor((Date.now()-new Date(iso).getTime())/86400000); }
 
@@ -337,45 +338,47 @@ function touchIdle(){
   idleTimer=setTimeout(()=>{ if(unlocked){ lockNow(); } }, 180000);
 }
 ['click','touchstart','keydown'].forEach(ev=>document.addEventListener(ev,touchIdle,{passive:true}));
-function askPin(onOK){
-  let buf='';
-  sheet(`<h2>الوضع الإداري</h2>
-    <div class="mini" style="text-align:center;margin-bottom:4px">أدخل الرمز المكوّن من أربعة أرقام</div>
+function askCode(o){
+  const pin=String(o.pin||''); let buf='';
+  sheet(`<h2>${esc(o.title)}</h2>
+    <div class="mini" style="text-align:center;margin-bottom:4px">${esc(o.sub||'أدخل الرمز المكوّن من أربعة أرقام')}</div>
     <div class="pinbox" id="pb"><i></i><i></i><i></i><i></i></div>
     <div class="big" id="pmsg" style="font-size:14px;padding:0 0 8px;color:var(--red)"></div>
     <div class="pad" id="pad"></div>
     <div style="margin-top:12px"><button class="btn ghost" style="width:100%" onclick="closeSheet()">إلغاء</button></div>
-    <div class="mini" style="text-align:center;margin-top:10px">نسيت الرمز؟ اكتب كلمة <b>حصارات</b> في مكان الأرقام عبر لوحة المفاتيح.</div>`);
+    ${o.recovery?'<div class="mini" style="text-align:center;margin-top:10px">نسيت الرمز؟ اكتب كلمة <b>حصارات</b> في مكان الأرقام عبر لوحة المفاتيح.</div>'
+      :'<div class="mini" style="text-align:center;margin-top:10px">إن نُسي هذا الرمز، يغيّره الإداري من الإعدادات.</div>'}`);
   const pad=$('#pad');
   const draw=()=>{ document.querySelectorAll('#pb i').forEach((e,i)=>e.className=i<buf.length?'f':''); };
+  const done=()=>{ closeSheet(); o.onOK&&o.onOK(); };
   const press=v=>{
     if(v==='<'){ buf=buf.slice(0,-1); draw(); return; }
     if(buf.length>=4) return;
     buf+=v; draw();
     if(buf.length===4){
-      setTimeout(()=>{
-        if(buf===String(S.settings.pin)){ unlocked=true; closeSheet(); applyLock(); renderHeader(); touchIdle(); onOK&&onOK(); }
-        else{ buf=''; draw(); $('#pmsg').textContent='رمز غير صحيح'; }
-      },120);
+      setTimeout(()=>{ if(buf===pin){ done(); } else { buf=''; draw(); $('#pmsg').textContent='رمز غير صحيح'; } },120);
     }
   };
   '123456789'.split('').forEach(d=>{const b=el('button','',d);b.onclick=()=>press(d);pad.appendChild(b);});
   const sp=el('button','alt',' '); sp.style.visibility='hidden'; pad.appendChild(sp);
   const z=el('button','','0'); z.onclick=()=>press('0'); pad.appendChild(z);
   const bk=el('button','alt','مسح'); bk.onclick=()=>press('<'); pad.appendChild(bk);
-  const kh=e=>{
-    if(e.key>='0'&&e.key<='9') press(e.key);
-    else if(e.key==='Backspace') press('<');
-  };
+  const kh=e=>{ if(e.key>='0'&&e.key<='9') press(e.key); else if(e.key==='Backspace') press('<'); };
   document.addEventListener('keydown',kh);
-  // escape hatch: type the recovery word
-  let word='';
-  const wh=e=>{ if(e.key.length===1&&/[\u0600-\u06FF]/.test(e.key)){ word=(word+e.key).slice(-6);
-    if(word==='حصارات'){ unlocked=true; closeSheet(); applyLock(); renderHeader(); alert('فُتح الوضع الإداري. يُستحسن تغيير الرمز من الإعدادات.'); onOK&&onOK(); } } };
-  document.addEventListener('keydown',wh);
+  let word='', wh=null;
+  if(o.recovery){
+    wh=e=>{ if(e.key.length===1&&/[\u0600-\u06FF]/.test(e.key)){ word=(word+e.key).slice(-6);
+      if(word==='حصارات'){ done(); alert('فُتح الوضع الإداري. يُستحسن تغيير الرمز من الإعدادات.'); } } };
+    document.addEventListener('keydown',wh);
+  }
   const mo=new MutationObserver(()=>{ if(!$('#mask').classList.contains('on')){
-    document.removeEventListener('keydown',kh); document.removeEventListener('keydown',wh); mo.disconnect(); } });
+    document.removeEventListener('keydown',kh); if(wh) document.removeEventListener('keydown',wh); mo.disconnect(); } });
   mo.observe($('#mask'),{attributes:true});
+}
+function askPin(onOK){
+  askCode({title:'الوضع الإداري', pin:S.settings.pin, recovery:true, onOK:()=>{
+    unlocked=true; applyLock(); renderHeader(); touchIdle(); onOK&&onOK();
+  }});
 }
 
 /* ---------- header / tabs ---------- */
@@ -486,13 +489,13 @@ function payDialog(){
   setTimeout(()=>pu.focus(),80);
 }
 function commitSale(pu,pl,change){
-  const sh=openShift(); S.seq++;
+  const sh=openShift(); S.seq++; const st=STN();
   const byK={}; cart.forEach(c=>{(byK[c.kiosk]=byK[c.kiosk]||[]).push(Object.assign({},c));});
   const vouchers=Object.keys(byK).map(kid=>{
     const items=byK[kid], tot=items.reduce((a,c)=>a+c.price*c.qty,0);
-    return {no:String(S.vseq++).padStart(4,'0'),kiosk:kid,items,total:tot,void:false,settled:null};
+    return {no:st+'-'+String(S.vseq++).padStart(4,'0'),kiosk:kid,items,total:tot,void:false,settled:null,stn:st};
   });
-  const sale={no:S.seq,ts:nowISO(),shift:sh?sh.id:null,lines:cart.map(c=>Object.assign({},c)),
+  const sale={no:st+S.seq,sid:st+'-'+S.seq,stn:st,ts:nowISO(),shift:sh?sh.id:null,lines:cart.map(c=>Object.assign({},c)),
     total:cartTotal(),paidUsd:pu,paidLbp:pl,rate:Number(S.settings.rate),change,vouchers};
   S.sales.push(sale); save();
   cart=[]; renderCart(); closeSheet(); renderHeader();
@@ -542,7 +545,7 @@ function renderVouchers(){
       const st=vStatus(v), d=el('div','it');
       const stl=v.settled?S.settlements.find(x=>x.id===v.settled):null;
       d.innerHTML=`<div class="g"><b>${v.no}</b> <span class="tag">${esc(kName(v.kiosk))}</span> <span class="tag ${st.c}">${st.t}</span>
-        <small>${v.items.map(i=>i.qty+'× '+esc(i.name)).join(' · ')} — ${usd(v.total)} — ${fmtDT(v.ts)}${stl?' — تسوية '+stl.no+' ('+fmtD(stl.ts)+')':''}</small></div>`;
+        <small>${v.items.map(i=>i.qty+'× '+esc(i.name)).join(' · ')} — ${usd(v.total)} — ${fmtDT(v.ts)}${stl?' — تسوية '+stl.no+' ('+fmtD(stl.ts)+')':''}${v.voidTs?' — أُلغيت '+fmtDT(v.voidTs):''}</small></div>`;
       if(!v.settled){
         const b=el('button','iconbtn'+(v.void?'':' d'),v.void?'↺':'✕');
         b.onclick=()=>toggleVoid(v.no); d.appendChild(b);
@@ -555,8 +558,18 @@ function renderVouchers(){
 function toggleVoid(no){
   const f=findV(no); if(!f) return;
   if(f.v.settled){alert('لا يمكن تعديل قسيمة مسوّاة.');return;}
-  if(!f.v.void && !confirm('إلغاء القسيمة '+no+'؟ لن تُحتسب في التسوية.')) return;
-  f.v.void=!f.v.void; save(); renderVouchers(); renderHeader();
+  const back=!!f.v.void;
+  if(!back && !confirm('إلغاء القسيمة '+no+'؟ لن تُحتسب في التسوية.')) return;
+  if(back && !confirm('إعادة تفعيل القسيمة '+no+'؟ ستُحتسب في التسوية من جديد.')) return;
+  const apply=()=>{
+    f.v.void=!back;
+    if(f.v.void) f.v.voidTs=nowISO(); else delete f.v.voidTs;
+    save(); renderVouchers(); renderHeader();
+  };
+  const vp=String(S.settings.voidPin||'');
+  if(vp) askCode({title:back?'إعادة تفعيل قسيمة':'إلغاء قسيمة مطبوعة',
+    sub:'هذه العملية تحتاج رمز الإلغاء', pin:vp, onOK:apply});
+  else apply();
 }
 
 /* =============== SETTLEMENT =============== */
@@ -638,9 +651,17 @@ function settleDialog(kid){
       <div class="fld"><input id="ni" class="num" inputmode="numeric" placeholder="رقم القسيمة"></div>
       <div class="nums" id="nl"></div><div class="mini" id="nmsg"></div>`;
     const ni=$('#ni');
+    const norm=raw=>{
+      let v=String(raw).trim().toUpperCase();
+      if(v.includes('-')){ const [a,b]=v.split('-'); return a+'-'+b.padStart(4,'0'); }
+      const m=out.filter(x=>x.no.split('-').pop()===v.padStart(4,'0'));
+      if(m.length===1) return m[0].no;          // unique suffix → resolve
+      if(m.length>1) return '؟'+v;              // ambiguous across stations
+      return v.padStart(4,'0');
+    };
     const add=txt=>{
       txt.split(/[\s,،]+/).filter(Boolean).forEach(raw=>{
-        const no=raw.padStart(4,'0');
+        const no=norm(raw);
         if(picked.includes(no)) return;
         picked.push(no);
       });
@@ -661,6 +682,7 @@ function settleDialog(kid){
       const f=findV; let msg=[];
       if(bad){
         const det=picked.filter(no=>!out.some(v=>v.no===no)).map(no=>{
+          if(no.startsWith('؟')) return no.slice(1)+': رقم موجود في أكثر من محطة — اكتبه كاملاً مثل A-'+no.slice(1).padStart(4,'0');
           const r=f(no);
           if(!r) return no+': رقم غير موجود';
           if(r.v.void) return no+': ملغاة';
@@ -773,6 +795,10 @@ function renderReports(){
       <div class="mini" style="margin-top:8px">"معلّق" = قسائم هذه الفترة لم تُسوَّ بعد. التسوية تتمّ من تبويب التسوية.</div>
     </div>
 
+    ${(()=>{const m={};S.sales.forEach(x=>{const k=x.stn||'—';m[k]=m[k]||{n:0,t:0};m[k].n++;m[k].t+=x.total;});
+      const ks=Object.keys(m); return ks.length>1?`<div class="card"><h3><span>المبيعات بحسب المحطة (كل الفترات)</span></h3>
+      <table><tr><th>المحطة</th><th class="n">فواتير</th><th class="n">مبيعات</th></tr>
+      ${ks.sort().map(k=>`<tr><td>محطة ${esc(k)}</td><td class="n">${m[k].n}</td><td class="n">${usd(m[k].t)}</td></tr>`).join('')}</table></div>`:'';})()}
     <div class="card">
       <h3><span>الوضع المالي مع الأكشاك (كل الفترات)</span></h3>
       <table>
@@ -878,6 +904,11 @@ function renderSettings(){
         <div class="fld"><label>سعر الصرف (ل.ل. لكل 1$)</label><input id="s_rate" class="num" type="number" step="500" value="${st.rate}"></div>
         <div class="fld"><label>نسبة النادي %</label><input id="s_com" class="num" type="number" step="1" value="${st.commission}"></div>
       </div>
+      <div class="fld"><label>رمز المحطة (حرف واحد — يجب أن يختلف عن كل محطة أخرى)</label>
+        <input id="s_stn" class="num" maxlength="2" value="${esc(STN())}"></div>
+      <div class="mini" style="margin:-4px 0 10px">
+        أرقام القسائم تصير <b>${esc(STN())}-0001</b>. لو استعملت محطتان الرمز نفسه، تتكرّر الأرقام وتفسد التسوية.
+      </div>
       <div class="fld"><label>عبارة أسفل القسيمة</label><input id="s_ft" value="${esc(st.footer)}"></div>
       <div class="fld"><label><input type="checkbox" id="s_lbp" ${st.showLbp?'checked':''} style="width:auto;margin-left:6px">إظهار المبالغ بالليرة</label></div>
       <button class="btn main" id="saveSet">حفظ</button></div>
@@ -895,6 +926,20 @@ function renderSettings(){
       ${hasPin()?'<button class="btn ghost" id="pinOff" style="width:100%;color:var(--red);border-color:#F3B7BF">إلغاء الرمز</button>':''}
     </div>
 
+    <div class="card"><h3><span>رمز إلغاء القسائم (اختياري)</span></h3>
+      <div class="mini" style="margin-bottom:10px">
+        عند تفعيله، لا يستطيع أحد إلغاء قسيمة مطبوعة أو إعادة تفعيلها قبل إدخال هذا الرمز.
+        ${st.voidPin?'<b style="color:var(--green)">مفعّل حالياً.</b> يجب أن يكون بيد مسؤول غير البائع.'
+          :'<b>غير مفعّل</b> — الإلغاء يتمّ بتأكيد عادي بلا رمز.'}
+        يجب أن يختلف عن الرمز الإداري.
+      </div>
+      <div class="row2">
+        <div class="fld"><label>رمز من ٤ أرقام</label><input id="s_vpin" class="num" type="tel" inputmode="numeric" maxlength="4" placeholder="${st.voidPin?'••••':'اتركه فارغاً للتعطيل'}" value="${esc(st.voidPin||'')}"></div>
+        <div class="fld"><label>&nbsp;</label><button class="btn ghost" id="vpinSave" style="width:100%">${st.voidPin?'تغيير':'تفعيل'}</button></div>
+      </div>
+      ${st.voidPin?'<button class="btn ghost" id="vpinOff" style="width:100%;color:var(--red);border-color:#F3B7BF">إلغاء رمز الإلغاء</button>':''}
+    </div>
+
     <div class="card"><h3><span>الأكشاك</span></h3><div class="list" id="klist"></div>
       <div class="row2" style="margin-top:10px"><input id="kn" placeholder="اسم كشك جديد"><button class="btn ghost" id="kadd">إضافة</button></div></div>
 
@@ -908,8 +953,11 @@ function renderSettings(){
         الفواتير: <b>${S.sales.length}</b> · القسائم: <b>${allVouchers().length}</b> · التسويات: <b>${S.settlements.length}</b> · الورديات: <b>${S.shifts.length}</b><br>
         حالة التخزين: <b style="color:${STORAGE_OK?'var(--green)':'var(--red)'}">${STORAGE_OK?'يعمل — يُحفظ فور كل عملية':'معطّل'}</b>
       </div>
-      <div class="row2"><button class="btn ghost" id="exp">حفظ نسخة احتياطية</button><button class="btn ghost" id="imp">استرجاع نسخة</button></div>
+      <div class="row2"><button class="btn ghost" id="exp">حفظ نسخة احتياطية</button><button class="btn ghost" id="imp">استرجاع نسخة (استبدال)</button></div>
+      <button class="btn ghost" id="mrg" style="width:100%;margin-top:8px;border-color:var(--green);color:var(--green)">دمج مبيعات محطة أخرى</button>
+      <div class="mini" style="margin-top:6px">الدمج يُضيف مبيعات المحطة الأخرى إلى هذا الجهاز بلا حذف شيء، ولا يكرّر ما سبق دمجه. استعمله على جهاز الإدارة قبل التسوية.</div>
       <input type="file" id="impf" accept=".json" style="display:none">
+      <input type="file" id="mrgf" accept=".json" style="display:none">
       <button class="btn ghost" id="tst" style="width:100%;margin-top:8px">طباعة تجريبية</button>
       <button class="btn ghost" id="wipe" style="width:100%;margin-top:8px;color:var(--red);border-color:#F3B7BF">مسح المبيعات والتسويات (بدء دورة جديدة)</button></div>
 
@@ -924,14 +972,29 @@ function renderSettings(){
   $('#saveSet').onclick=()=>{
     st.club=$('#s_club').value.trim()||st.club; st.event=$('#s_event').value.trim();
     st.rate=Number($('#s_rate').value)||st.rate; st.commission=Number($('#s_com').value)||0;
+    const ns=$('#s_stn').value.trim().toUpperCase().slice(0,2)||'A';
+    if(ns!==STN()&&S.sales.length&&!confirm('تغيير رمز المحطة بعد وجود مبيعات؟ القسائم القديمة تحتفظ برمزها.'))return;
+    st.station=ns;
     st.footer=$('#s_ft').value; st.showLbp=$('#s_lbp').checked;
     save();renderHeader();renderCart();alert('حُفظ.');};
 
   $('#pinSave').onclick=()=>{
     const v=$('#s_pin').value.trim();
     if(!/^\d{4}$/.test(v)){ alert('الرمز يجب أن يكون أربعة أرقام.'); return; }
+    if(v===String(st.voidPin||'')){ alert('الرمز الإداري يجب أن يختلف عن رمز الإلغاء.'); return; }
     st.pin=v; save(); unlocked=true; applyLock(); renderHeader(); renderSettings();
     alert('فُعّل الرمز: '+v+'\nاكتبه في مكان آمن. إن نُسي، تُكتب كلمة "حصارات" في شاشة الرمز لفتحه.');
+  };
+  $('#vpinSave').onclick=()=>{
+    const v=$('#s_vpin').value.trim();
+    if(!/^\d{4}$/.test(v)){ alert('الرمز يجب أن يكون أربعة أرقام.'); return; }
+    if(v===String(st.pin||'')){ alert('رمز الإلغاء يجب أن يختلف عن الرمز الإداري.'); return; }
+    st.voidPin=v; save(); renderSettings();
+    alert('فُعّل رمز الإلغاء: '+v+'\nسلّمه لمسؤول واحد فقط. إن نُسي، غيّره من هنا.');
+  };
+  if($('#vpinOff')) $('#vpinOff').onclick=()=>{
+    if(!confirm('إلغاء رمز الإلغاء؟ سيصبح إلغاء القسائم متاحاً بتأكيد عادي.'))return;
+    st.voidPin=''; save(); renderSettings();
   };
   if($('#pinOff')) $('#pinOff').onclick=()=>{
     if(!confirm('إلغاء الرمز؟ ستصبح كل التبويبات مفتوحة للجميع.'))return;
@@ -968,6 +1031,10 @@ function renderSettings(){
     r.onload=()=>{try{const o=JSON.parse(r.result);if(!o.settings||!o.products)throw 0;
       if(confirm('استبدال كل البيانات الحالية بالنسخة المسترجعة؟')){S=o;save();location.reload();}}
       catch(_){alert('ملف غير صالح.');}};r.readAsText(f);};
+  $('#mrg').onclick=()=>$('#mrgf').click();
+  $('#mrgf').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
+    r.onload=()=>{try{ mergeData(JSON.parse(r.result)); }catch(_){ alert('ملف غير صالح.'); } e.target.value=''; };
+    r.readAsText(f);};
   $('#tst').onclick=()=>doPrint(`<div class="vch"><div class="club">${esc(st.club)}</div>
     <div class="ev">${esc(st.event)}</div><hr><div class="kiosk">طباعة تجريبية</div>
     <div class="no">0000</div><hr><div class="ft">إذا خرجت هذه الورقة، الطابعة جاهزة.</div></div>`);
@@ -987,6 +1054,31 @@ function editProduct(p){
     <button class="btn main" id="ok">حفظ</button></div>`);
   $('#ok').onclick=()=>{p.name=$('#en').value.trim()||p.name;p.price=Number($('#ep').value)||p.price;
     p.kiosk=$('#ek').value;p.on=$('#eo').checked;save();closeSheet();renderSettings();renderGrid();};
+}
+function mergeData(o){
+  if(!o||!o.sales||!o.settings){ alert('ملف غير صالح.'); return; }
+  const inStn=String(o.settings.station||'?').toUpperCase();
+  if(inStn===STN() && o.sales.length){
+    if(!confirm('تحذير: الملف من محطة رمزها "'+inStn+'" وهو رمز هذا الجهاز نفسه.\nقد تتكرّر أرقام القسائم. متابعة رغم ذلك؟')) return;
+  }
+  const sid=x=>x.sid||String(x.no);
+  const have=new Set(S.sales.map(sid));
+  const haveV=new Set(allVouchers().map(v=>v.no));
+  let nS=0,nV=0,nT=0,dupV=0;
+  // kiosks & products that this device doesn't know yet
+  (o.kiosks||[]).forEach(k=>{ if(!S.kiosks.some(x=>x.id===k.id)) S.kiosks.push(k); });
+  (o.products||[]).forEach(p=>{ if(!S.products.some(x=>x.id===p.id)) S.products.push(Object.assign({},p,{on:false})); });
+  (o.shifts||[]).forEach(sh=>{ if(!S.shifts.some(x=>x.id===sh.id)) S.shifts.push(sh); });
+  o.sales.forEach(sa=>{
+    if(have.has(sid(sa))) return;
+    sa.vouchers.forEach(v=>{ if(haveV.has(v.no)) dupV++; });
+    S.sales.push(sa); nS++; nV+=sa.vouchers.length;
+  });
+  (o.settlements||[]).forEach(t=>{ if(!S.settlements.some(x=>x.id===t.id)){ S.settlements.push(t); nT++; } });
+  S.sales.sort((a,b)=>String(a.ts).localeCompare(String(b.ts)));
+  save(); renderHeader(); renderSettings();
+  alert('تمّ الدمج.\nفواتير مضافة: '+nS+'\nقسائم مضافة: '+nV+'\nتسويات مضافة: '+nT+
+        (dupV?'\n\nتحذير: '+dupV+' قسيمة برقم مكرّر — راجع رموز المحطات.':''));
 }
 function exportJSON(){
   const d=new Date();
