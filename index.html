@@ -156,6 +156,8 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
   .vch .tot{font-size:15px;font-weight:800;direction:ltr}
   .vch .ft{font-size:10px;margin-top:4px}
   .vch .nl{font-size:10px;direction:ltr;word-break:break-all;line-height:1.6}
+  .vch .cut{font-size:11px;margin-top:6px;letter-spacing:1px}
+  .vch .feed{font-size:12px;line-height:1.6}
 }
 @media (min-width:900px){
   #sell.on{flex-direction:row-reverse}
@@ -220,7 +222,7 @@ let STORAGE_OK=true, MEM=null;
 const DEFAULTS=()=>({
   settings:{club:'نادي حصارات الرياضي الثقافي الاجتماعي',event:'الدورة الرياضية 2026',
     rate:89500,commission:10,showLbp:true,
-    footer:'تُسلَّم هذه القسيمة للكشك — لا تُستبدل بنقد',lastBackup:null,pin:'',voidPin:'',station:'A'},
+    footer:'تُسلَّم هذه القسيمة للكشك — لا تُستبدل بنقد',lastBackup:null,pin:'',voidPin:'',station:'A',feed:3},
   kiosks:[{id:'k1',name:'كشك المأكولات'},{id:'k2',name:'كشك المشروبات'},{id:'k3',name:'كشك الحلويات'}],
   products:[
     {id:'p1',name:'شطيرة لحم',price:4,kiosk:'k1',on:true},
@@ -491,9 +493,19 @@ function payDialog(){
 function commitSale(pu,pl,change){
   const sh=openShift(); S.seq++; const st=STN();
   const byK={}; cart.forEach(c=>{(byK[c.kiosk]=byK[c.kiosk]||[]).push(Object.assign({},c));});
-  const vouchers=Object.keys(byK).map(kid=>{
-    const items=byK[kid], tot=items.reduce((a,c)=>a+c.price*c.qty,0);
-    return {no:st+'-'+String(S.vseq++).padStart(4,'0'),kiosk:kid,items,total:tot,void:false,settled:null,stn:st};
+  const vouchers=[];
+  Object.keys(byK).forEach(kid=>{
+    const items=byK[kid];
+    const k=S.kiosks.find(x=>x.id===kid);
+    if(k&&k.split){ // قسيمة منفصلة لكل وحدة
+      items.forEach(c=>{ const n=Math.max(1,Math.round(c.qty));
+        for(let i=1;i<=n;i++) vouchers.push({no:st+'-'+String(S.vseq++).padStart(4,'0'),kiosk:kid,
+          items:[Object.assign({},c,{qty:1})],total:c.price,void:false,settled:null,stn:st,unit:[i,n]});
+      });
+    } else {
+      vouchers.push({no:st+'-'+String(S.vseq++).padStart(4,'0'),kiosk:kid,items,
+        total:items.reduce((a,c)=>a+c.price*c.qty,0),void:false,settled:null,stn:st});
+    }
   });
   const sale={no:st+S.seq,sid:st+'-'+S.seq,stn:st,ts:nowISO(),shift:sh?sh.id:null,lines:cart.map(c=>Object.assign({},c)),
     total:cartTotal(),paidUsd:pu,paidLbp:pl,rate:Number(S.settings.rate),change,vouchers};
@@ -503,6 +515,10 @@ function commitSale(pu,pl,change){
 }
 
 /* ---------- print ---------- */
+function cutBlock(){
+  const n=S.settings.feed===undefined?3:Number(S.settings.feed)||0;
+  return `<div class="cut">✂ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─</div>`+'<div class="feed">&nbsp;</div>'.repeat(n);
+}
 function printVouchers(sale){
   const st=S.settings;
   const html=sale.vouchers.map((v,i)=>`<div class="vch">
@@ -512,8 +528,8 @@ function printVouchers(sale){
     <table>${v.items.map(it=>`<tr><td class="q">${it.qty}×</td><td>${esc(it.name)}</td><td class="a">${usd(it.price*it.qty)}</td></tr>`).join('')}</table><hr>
     <div class="tot">${usd(v.total)}${st.showLbp?' · '+lbpTxt(v.total*sale.rate):''}</div><hr>
     <div class="ft">فاتورة ${sale.no} · ${fmtDT(sale.ts)}</div>
-    <div class="ft">قسيمة ${i+1} من ${sale.vouchers.length}</div>
-    <div class="ft">${esc(st.footer)}</div></div>`).join('');
+    <div class="ft">${v.unit?`وحدة ${v.unit[0]} من ${v.unit[1]} · `:''}قسيمة ${i+1} من ${sale.vouchers.length}</div>
+    <div class="ft">${esc(st.footer)}</div>${cutBlock()}</div>`).join('');
   doPrint(html);
 }
 function doPrint(html){ $('#printArea').innerHTML=html; setTimeout(()=>window.print(),60); }
@@ -738,7 +754,7 @@ function printSettlement(st){
     <div class="ft" style="margin-top:8px">استلمها: ${esc(st.by||'____________')}</div>
     <div class="ft" style="margin-top:12px">توقيع الكشك: ____________</div>
     <div class="ft" style="margin-top:12px">توقيع أمين الصندوق: ____________</div>
-  </div>`);
+    ${cutBlock()}</div>`);
 }
 
 /* =============== REPORTS =============== */
@@ -910,6 +926,8 @@ function renderSettings(){
         أرقام القسائم تصير <b>${esc(STN())}-0001</b>. لو استعملت محطتان الرمز نفسه، تتكرّر الأرقام وتفسد التسوية.
       </div>
       <div class="fld"><label>عبارة أسفل القسيمة</label><input id="s_ft" value="${esc(st.footer)}"></div>
+      <div class="fld"><label>أسطر فراغ بعد كل قسيمة (لتسهيل القص) — من ٠ إلى ٨</label>
+        <input id="s_feed" class="num" type="number" min="0" max="8" step="1" value="${st.feed===undefined?3:st.feed}"></div>
       <div class="fld"><label><input type="checkbox" id="s_lbp" ${st.showLbp?'checked':''} style="width:auto;margin-left:6px">إظهار المبالغ بالليرة</label></div>
       <button class="btn main" id="saveSet">حفظ</button></div>
 
@@ -976,6 +994,7 @@ function renderSettings(){
     if(ns!==STN()&&S.sales.length&&!confirm('تغيير رمز المحطة بعد وجود مبيعات؟ القسائم القديمة تحتفظ برمزها.'))return;
     st.station=ns;
     st.footer=$('#s_ft').value; st.showLbp=$('#s_lbp').checked;
+    st.feed=Math.max(0,Math.min(8,Math.round(Number($('#s_feed').value)||0)));
     save();renderHeader();renderCart();alert('حُفظ.');};
 
   $('#pinSave').onclick=()=>{
@@ -1004,13 +1023,14 @@ function renderSettings(){
   const kl=$('#klist');kl.innerHTML='';
   S.kiosks.forEach(k=>{
     const n=S.products.filter(p=>p.kiosk===k.id).length;
-    const d=el('div','it');d.innerHTML=`<div class="g"><b>${esc(k.name)}</b><small>${n} صنف</small></div>`;
+    const d=el('div','it');d.innerHTML=`<div class="g"><b>${esc(k.name)}</b>${k.split?' <span class="tag">قسيمة لكل وحدة</span>':''}<small>${n} صنف</small></div>`;
+    const e=el('button','iconbtn','✎');e.onclick=()=>editKiosk(k);
     const b=el('button','iconbtn d','✕');
     b.onclick=()=>{if(n){alert('لا يمكن حذف كشك فيه أصناف.');return;}
       if(confirm('حذف '+k.name+'؟')){S.kiosks=S.kiosks.filter(x=>x.id!==k.id);save();renderSettings();renderKbar();}};
-    d.appendChild(b);kl.appendChild(d);});
+    d.appendChild(e);d.appendChild(b);kl.appendChild(d);});
   $('#kadd').onclick=()=>{const v=$('#kn').value.trim();if(!v)return;
-    S.kiosks.push({id:uid('k'),name:v});save();renderSettings();renderKbar();renderGrid();};
+    S.kiosks.push({id:uid('k'),name:v,split:false});save();renderSettings();renderKbar();renderGrid();};
 
   const pl=$('#plist');pl.innerHTML='';
   S.products.forEach(p=>{
@@ -1037,12 +1057,24 @@ function renderSettings(){
     r.readAsText(f);};
   $('#tst').onclick=()=>doPrint(`<div class="vch"><div class="club">${esc(st.club)}</div>
     <div class="ev">${esc(st.event)}</div><hr><div class="kiosk">طباعة تجريبية</div>
-    <div class="no">0000</div><hr><div class="ft">إذا خرجت هذه الورقة، الطابعة جاهزة.</div></div>`);
+    <div class="no">0000</div><hr><div class="ft">إذا خرجت هذه الورقة، الطابعة جاهزة.</div>${cutBlock()}</div>`);
   $('#wipe').onclick=()=>{
     if(!confirm('سيتم مسح كل الفواتير والقسائم والتسويات والورديات.\nالأصناف والأكشاك تبقى. متابعة؟'))return;
     if(!confirm('تأكيد نهائي — احفظ نسخة احتياطية أولاً إن أردت.'))return;
     S.sales=[];S.shifts=[];S.settlements=[];S.seq=1000;S.vseq=1;S.sseq=0;
     save();renderSettings();renderHeader();};
+}
+function editKiosk(k){
+  sheet(`<h2>تعديل كشك</h2>
+    <div class="fld"><label>الاسم</label><input id="kne" value="${esc(k.name)}"></div>
+    <div class="fld"><label><input type="checkbox" id="ksp" ${k.split?'checked':''} style="width:auto;margin-left:6px">قسيمة منفصلة لكل وحدة</label></div>
+    <div class="mini" style="margin:-4px 0 12px;line-height:1.6">
+      عند التفعيل، إذا طلب الزبون ١٠ قطع من صنف في هذا الكشك تُطبع <b>١٠ قسائم منفصلة</b>، كل واحدة برقم خاص وتُستعمل وحدها.
+      مناسب لكشك كوبونات الألعاب. اتركه مطفأً في الأكشاك العادية (قسيمة واحدة تحمل كل الطلب).</div>
+    <div style="display:flex;gap:8px"><button class="btn ghost" onclick="closeSheet()">إلغاء</button>
+    <button class="btn main" id="ok">حفظ</button></div>`);
+  $('#ok').onclick=()=>{k.name=$('#kne').value.trim()||k.name;k.split=$('#ksp').checked;
+    save();closeSheet();renderSettings();renderKbar();renderGrid();};
 }
 function editProduct(p){
   sheet(`<h2>تعديل صنف</h2>
