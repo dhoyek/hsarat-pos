@@ -147,14 +147,15 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
   .vch .club{font-size:13px;font-weight:700}
   .vch .ev{font-size:11px}
   .vch hr{border:none;border-top:1px dashed #000;margin:5px 0}
-  .vch .kiosk{font-size:19px;font-weight:800;padding:4px 0;border:2px solid #000;margin:5px 0}
-  .vch .no{font-size:22px;font-weight:800;direction:ltr}
-  .vch table{width:100%;font-size:12px;border-collapse:collapse}
-  .vch table td{border:none;padding:2px 0;text-align:right}
-  .vch table td.q{text-align:center;width:22px;direction:ltr}
-  .vch table td.a{text-align:left;width:52px;direction:ltr}
+  .vch .kiosk{font-size:15px;font-weight:800;padding:3px 0;border:2px solid #000;margin:5px 0}
+  .vch .no{font-size:16px;font-weight:800;direction:ltr}
+  .vch table{width:100%;font-size:17px;font-weight:700;border-collapse:collapse}
+  .vch table td{border:none;padding:3px 0;text-align:right;line-height:1.35}
+  .vch table td.q{text-align:center;width:30px;direction:ltr}
+  .vch table td.a{text-align:left;width:62px;direction:ltr}
   .vch .tot{font-size:15px;font-weight:800;direction:ltr}
   .vch .ft{font-size:10px;margin-top:4px}
+  .vch .rp{font-weight:800;border:1px dashed #000;padding:2px 0;margin-top:5px}
   .vch .nl{font-size:10px;direction:ltr;word-break:break-all;line-height:1.6}
   .vch .cut{font-size:11px;margin-top:6px;letter-spacing:1px}
   .vch .feed{font-size:12px;line-height:1.6}
@@ -222,7 +223,7 @@ let STORAGE_OK=true, MEM=null;
 const DEFAULTS=()=>({
   settings:{club:'نادي حصارات الرياضي الثقافي الاجتماعي',event:'الدورة الرياضية 2026',
     rate:89500,commission:10,showLbp:true,
-    footer:'تُسلَّم هذه القسيمة للكشك — لا تُستبدل بنقد',lastBackup:null,pin:'',voidPin:'',station:'A',feed:3},
+    footer:'',lastBackup:null,pin:'',voidPin:'',station:'A',feed:3,cutMark:true},
   kiosks:[{id:'k1',name:'كشك المأكولات'},{id:'k2',name:'كشك المشروبات'},{id:'k3',name:'كشك الحلويات'}],
   products:[
     {id:'p1',name:'شطيرة لحم',price:4,kiosk:'k1',on:true},
@@ -261,6 +262,8 @@ function load(){
   for(const k in d) if(S[k]===undefined) S[k]=d[k];
   for(const k in d.settings) if(S.settings[k]===undefined) S.settings[k]=d.settings[k];
   S.sales.forEach(s=>s.vouchers.forEach(v=>{ if(v.settled===undefined) v.settled=null; }));
+  if(S.settings.footer==='تُسلَّم هذه القسيمة للكشك — لا تُستبدل بنقد') S.settings.footer='';
+  S.kiosks.forEach(k=>{ if(k.split===undefined) k.split=false; });
   try{ const c=localStorage.getItem(CKEY); if(c) cart=JSON.parse(c)||[]; }catch(e){}
 }
 function save(){
@@ -516,21 +519,33 @@ function commitSale(pu,pl,change){
 
 /* ---------- print ---------- */
 function cutBlock(){
-  const n=S.settings.feed===undefined?3:Number(S.settings.feed)||0;
-  return `<div class="cut">✂ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─</div>`+'<div class="feed">&nbsp;</div>'.repeat(n);
-}
-function printVouchers(sale){
   const st=S.settings;
-  const html=sale.vouchers.map((v,i)=>`<div class="vch">
+  const n=st.feed===undefined?3:Number(st.feed)||0;
+  const mark=st.cutMark===false?'':`<div class="cut">✂ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─</div>`;
+  return mark+'<div class="feed">&nbsp;</div>'.repeat(n);
+}
+function vchHTML(v,sale,again){
+  const st=S.settings;
+  return `<div class="vch">
     <div class="club">${esc(st.club)}</div><div class="ev">${esc(st.event)}</div><hr>
     <div class="kiosk">${esc(kName(v.kiosk))}</div>
-    <div>رقم القسيمة</div><div class="no">${v.no}</div><hr>
+    <div class="no">${v.no}</div><hr>
     <table>${v.items.map(it=>`<tr><td class="q">${it.qty}×</td><td>${esc(it.name)}</td><td class="a">${usd(it.price*it.qty)}</td></tr>`).join('')}</table><hr>
-    <div class="tot">${usd(v.total)}${st.showLbp?' · '+lbpTxt(v.total*sale.rate):''}</div><hr>
+    <div class="tot">${usd(v.total)}${st.showLbp?' · '+lbpTxt(v.total*(sale.rate||st.rate)):''}</div><hr>
     <div class="ft">فاتورة ${sale.no} · ${fmtDT(sale.ts)}</div>
-    <div class="ft">${v.unit?`وحدة ${v.unit[0]} من ${v.unit[1]} · `:''}قسيمة ${i+1} من ${sale.vouchers.length}</div>
-    <div class="ft">${esc(st.footer)}</div>${cutBlock()}</div>`).join('');
-  doPrint(html);
+    ${v.unit?`<div class="ft">وحدة ${v.unit[0]} من ${v.unit[1]}</div>`:''}
+    ${again?'<div class="ft rp">إعادة طباعة — القسيمة نفسها، لا تُحتسب مرتين</div>':''}
+    ${st.footer?`<div class="ft">${esc(st.footer)}</div>`:''}${cutBlock()}</div>`;
+}
+function printVouchers(sale){ doPrint(sale.vouchers.map(v=>vchHTML(v,sale,false)).join('')); }
+function reprintVoucher(no){
+  const f=findV(no); if(!f){alert('رقم غير موجود.');return;}
+  if(f.v.void && !confirm('هذه القسيمة ملغاة. طباعتها من جديد؟')) return;
+  doPrint(vchHTML(f.v,f.s,true));
+}
+function reprintSale(sid){
+  const s=S.sales.find(x=>(x.sid||String(x.no))===sid); if(!s){alert('الفاتورة غير موجودة.');return;}
+  doPrint(s.vouchers.map(v=>vchHTML(v,s,true)).join(''));
 }
 function doPrint(html){ $('#printArea').innerHTML=html; setTimeout(()=>window.print(),60); }
 
@@ -539,11 +554,17 @@ let vFilter='out', vQuery='';
 function renderVouchers(){
   const w=$('#vchWrap');
   const F=[['all','الكل'],['out','غير مسوّاة'],['done','مسوّاة'],['void','ملغاة']];
-  w.innerHTML=`<div class="card">
+  const last=S.sales[S.sales.length-1];
+  w.innerHTML=`${last?`<div class="card"><h3><span>إعادة الطباعة</span></h3>
+      <div class="mini" style="margin-bottom:8px">إذا فشلت الطباعة أو انقطع الورق، أعد طباعة القسيمة — الرقم يبقى نفسه ولا تُحتسب مرتين في التسوية.</div>
+      <button class="btn ghost" id="rpLast" style="width:100%;border-color:var(--green);color:var(--green)">
+        إعادة طباعة آخر فاتورة — ${esc(last.no)} · ${last.vouchers.length} قسيمة · ${usd(last.total)}</button></div>`:''}
+    <div class="card">
       <div class="fld" style="margin-bottom:8px"><input id="vq" class="num" placeholder="بحث برقم القسيمة" inputmode="numeric" value="${esc(vQuery)}"></div>
       <div class="chips" id="vchips">${F.map(f=>`<button data-f="${f[0]}" class="${vFilter===f[0]?'on':''}">${f[1]}</button>`).join('')}</div>
       <div id="vlist"></div>
     </div>`;
+  if(last) $('#rpLast').onclick=()=>reprintSale(last.sid||String(last.no));
   w.querySelectorAll('#vchips button').forEach(b=>b.onclick=()=>{vFilter=b.dataset.f;renderVouchers();});
   $('#vq').oninput=e=>{vQuery=e.target.value.trim();drawV();};
   drawV();
@@ -562,6 +583,8 @@ function renderVouchers(){
       const stl=v.settled?S.settlements.find(x=>x.id===v.settled):null;
       d.innerHTML=`<div class="g"><b>${v.no}</b> <span class="tag">${esc(kName(v.kiosk))}</span> <span class="tag ${st.c}">${st.t}</span>
         <small>${v.items.map(i=>i.qty+'× '+esc(i.name)).join(' · ')} — ${usd(v.total)} — ${fmtDT(v.ts)}${stl?' — تسوية '+stl.no+' ('+fmtD(stl.ts)+')':''}${v.voidTs?' — أُلغيت '+fmtDT(v.voidTs):''}</small></div>`;
+      const rp=el('button','iconbtn','⎙'); rp.title='إعادة طباعة';
+      rp.onclick=()=>reprintVoucher(v.no); d.appendChild(rp);
       if(!v.settled){
         const b=el('button','iconbtn'+(v.void?'':' d'),v.void?'↺':'✕');
         b.onclick=()=>toggleVoid(v.no); d.appendChild(b);
@@ -654,7 +677,7 @@ function settleDialog(kid){
     const list = mode==='all'? out : out.filter(v=>picked.includes(v.no));
     const g=list.reduce((a,v)=>a+v.total,0), c=g*com/100;
     $('#calc').innerHTML=`عدد القسائم: <b>${list.length}</b> · قيمتها: <b>${usd(g)}</b><br>
-      حصة النادي ${com}%: <b>-${usd(c)}</b> · <b style="font-size:17px">المستحق للكشك: ${usd(g-c)}</b>`;
+      حصة المنظّم ${com}%: <b>-${usd(c)}</b> · <b style="font-size:17px">المستحق للكشك: ${usd(g-c)}</b>`;
     return list;
   }
   function drawAll(){
@@ -744,7 +767,7 @@ function printSettlement(st){
     <table>
       <tr><td>عدد القسائم</td><td class="a">${st.nos.length}</td></tr>
       <tr><td>قيمة القسائم</td><td class="a">${usd(st.gross)}</td></tr>
-      <tr><td>حصة النادي ${st.comPct}%</td><td class="a">-${usd(st.com)}</td></tr>
+      <tr><td>حصة المنظّم ${st.comPct}%</td><td class="a">-${usd(st.com)}</td></tr>
     </table><hr>
     <div class="tot" style="text-align:center">المدفوع: ${usd(st.net)}</div>
     <div style="text-align:center;font-size:11px">${lbpTxt(st.net*s.rate)}</div><hr>
@@ -781,7 +804,12 @@ function renderReports(){
     P[l.id].q+=l.qty;P[l.id].sum+=l.price*l.qty;}));
   const prods=Object.values(P).sort((a,b)=>b.sum-a.sum);
   const paidOut=S.settlements.reduce((a,s)=>a+s.net,0);
-  const stillOut=S.kiosks.reduce((a,k)=>a+outstanding(k.id).reduce((x,v)=>x+v.total,0),0)*(100-com)/100;
+  const outGross=S.kiosks.reduce((a,k)=>a+outstanding(k.id).reduce((x,v)=>x+v.total,0),0);
+  const stillOut=outGross*(100-com)/100;
+  // organiser share
+  const comPeriod=sales.reduce((a,s)=>a+s.vouchers.filter(v=>!v.void).reduce((x,v)=>x+v.total,0),0)*com/100;
+  const comReal=S.settlements.reduce((a,s)=>a+(s.com||0),0);
+  const comPend=outGross*com/100;
   const unused=allVouchers().filter(v=>!v.void&&!v.settled&&daysAgo(v.ts)>=3);
 
   w.innerHTML=`
@@ -795,12 +823,13 @@ function renderReports(){
       <div class="kpi"><div class="v">${sales.length}</div><div class="l">عدد الفواتير</div></div>
       <div class="kpi"><div class="v">${usd(pu)}</div><div class="l">مقبوض دولار</div></div>
       <div class="kpi"><div class="v" style="font-size:16px">${lbp(pl).toLocaleString('en-US')}</div><div class="l">مقبوض ليرة</div></div>
+      <div class="kpi" style="border-color:var(--green)"><div class="v" style="color:var(--green)">${usd(comPeriod)}</div><div class="l">حصة المنظّم ${com}% (هذه الفترة)</div></div>
     </div>
     <div class="okbox">النقد الذي يجب أن يكون في الصندوق عن هذه الفترة:
       <b>${usd(pu-chg)}</b> بالدولار و<b>${lbp(pl).toLocaleString('en-US')} ل.ل.</b> بالليرة.</div>
 
     <div class="card">
-      <h3><span>الأكشاك — نسبة النادي ${com}%</span></h3>
+      <h3><span>الأكشاك — نسبة المنظّم ${com}%</span></h3>
       <table>
         <tr><th>الكشك</th><th class="n">قسائم</th><th class="n">قيمة</th><th class="n">معلّق</th><th class="n">للكشك</th></tr>
         ${S.kiosks.map(k=>{const d=K[k.id]||{n:0,sum:0,out:0,outSum:0};
@@ -815,6 +844,17 @@ function renderReports(){
       const ks=Object.keys(m); return ks.length>1?`<div class="card"><h3><span>المبيعات بحسب المحطة (كل الفترات)</span></h3>
       <table><tr><th>المحطة</th><th class="n">فواتير</th><th class="n">مبيعات</th></tr>
       ${ks.sort().map(k=>`<tr><td>محطة ${esc(k)}</td><td class="n">${m[k].n}</td><td class="n">${usd(m[k].t)}</td></tr>`).join('')}</table></div>`:'';})()}
+    <div class="card">
+      <h3><span>حصة المنظّم — تفصيل (كل الفترات)</span></h3>
+      <table>
+        <tr><td>محقّقة فعلياً — حُسمت في التسويات المنفَّذة</td><td class="n"><b style="color:var(--green)">${usd(comReal)}</b></td></tr>
+        <tr><td>متوقّعة — من قسائم لم تُسوَّ بعد</td><td class="n">${usd(comPend)}</td></tr>
+        <tr><td><b>الإجمالي المتوقّع</b></td><td class="n"><b>${usd(comReal+comPend)}</b></td></tr>
+      </table>
+      <div class="mini" style="margin-top:8px">حصة المنظّم = ${com}% تُحسم من قيمة قسائم كل كشك عند التسوية. تصبح "محقّقة" لحظة تنفيذ التسوية مع الكشك.
+      القسائم التي لا يستعملها الزبائن تبقى بكاملها للمنظّم ولا تظهر هنا.</div>
+    </div>
+
     <div class="card">
       <h3><span>الوضع المالي مع الأكشاك (كل الفترات)</span></h3>
       <table>
@@ -914,11 +954,11 @@ function renderSettings(){
     ${STORAGE_OK?'':'<div class="warnbox"><b>تنبيه خطير:</b> هذا المتصفح لا يسمح بالحفظ. كل شيء سيضيع عند إغلاق الصفحة. افتح التطبيق من رابط الإنترنت بدل الملف المحلي، أو استعمل Firefox.</div>'}
     ${STORAGE_OK&&(lb===null||lb>=1)?`<div class="okbox">آخر نسخة احتياطية على القرص: <b>${lb===null?'لم تُحفظ بعد':'منذ '+lb+' يوم'}</b>. احفظ نسخة الآن.</div>`:''}
     <div class="card"><h3><span>عام</span></h3>
-      <div class="fld"><label>اسم النادي</label><input id="s_club" value="${esc(st.club)}"></div>
+      <div class="fld"><label>اسم الجهة المنظِّمة</label><input id="s_club" value="${esc(st.club)}"></div>
       <div class="fld"><label>اسم المناسبة</label><input id="s_event" value="${esc(st.event)}"></div>
       <div class="row2">
         <div class="fld"><label>سعر الصرف (ل.ل. لكل 1$)</label><input id="s_rate" class="num" type="number" step="500" value="${st.rate}"></div>
-        <div class="fld"><label>نسبة النادي %</label><input id="s_com" class="num" type="number" step="1" value="${st.commission}"></div>
+        <div class="fld"><label>نسبة المنظّم %</label><input id="s_com" class="num" type="number" step="1" value="${st.commission}"></div>
       </div>
       <div class="fld"><label>رمز المحطة (حرف واحد — يجب أن يختلف عن كل محطة أخرى)</label>
         <input id="s_stn" class="num" maxlength="2" value="${esc(STN())}"></div>
@@ -928,6 +968,8 @@ function renderSettings(){
       <div class="fld"><label>عبارة أسفل القسيمة</label><input id="s_ft" value="${esc(st.footer)}"></div>
       <div class="fld"><label>أسطر فراغ بعد كل قسيمة (لتسهيل القص) — من ٠ إلى ٨</label>
         <input id="s_feed" class="num" type="number" min="0" max="8" step="1" value="${st.feed===undefined?3:st.feed}"></div>
+      <div class="fld"><label><input type="checkbox" id="s_cut" ${st.cutMark!==false?'checked':''} style="width:auto;margin-left:6px">طباعة خط القص ✂ بين القسائم</label></div>
+      <div class="mini" style="margin:-6px 0 10px">أطفئه إذا كانت الطابعة تقصّ الورق تلقائياً — عندها لا حاجة لخط القص ولا لأسطر الفراغ (اجعلها ٠).</div>
       <div class="fld"><label><input type="checkbox" id="s_lbp" ${st.showLbp?'checked':''} style="width:auto;margin-left:6px">إظهار المبالغ بالليرة</label></div>
       <button class="btn main" id="saveSet">حفظ</button></div>
 
@@ -995,6 +1037,7 @@ function renderSettings(){
     st.station=ns;
     st.footer=$('#s_ft').value; st.showLbp=$('#s_lbp').checked;
     st.feed=Math.max(0,Math.min(8,Math.round(Number($('#s_feed').value)||0)));
+    st.cutMark=$('#s_cut').checked;
     save();renderHeader();renderCart();alert('حُفظ.');};
 
   $('#pinSave').onclick=()=>{
