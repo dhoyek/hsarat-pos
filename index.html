@@ -142,6 +142,20 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
   #app,.mask{display:none !important}
   #printArea{display:block !important;width:100%;font-family:'Segoe UI',Tahoma,Arial,sans-serif}
   @page{size:58mm auto;margin:2mm}
+  /* 80mm paper: same layout, larger type */
+  #printArea.w80 .vch{font-size:15px;line-height:1.5}
+  #printArea.w80 .vch .club{font-size:17px}
+  #printArea.w80 .vch .ev{font-size:14px}
+  #printArea.w80 .vch .kiosk{font-size:20px;padding:5px 0}
+  #printArea.w80 .vch .no{font-size:21px}
+  #printArea.w80 .vch table{font-size:22px}
+  #printArea.w80 .vch table td.q{width:42px}
+  #printArea.w80 .vch table td.a{width:86px}
+  #printArea.w80 .vch .tot{font-size:20px}
+  #printArea.w80 .vch .ft{font-size:13px}
+  #printArea.w80 .vch .nl{font-size:13px}
+  #printArea.w80 .vch .cut{font-size:14px}
+  #printArea.w80 .vch .feed{font-size:15px}
   .vch{width:100%;page-break-after:always;text-align:center;color:#000;font-size:12px;line-height:1.45}
   .vch:last-child{page-break-after:auto}
   .vch .club{font-size:13px;font-weight:700}
@@ -168,6 +182,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
   .kpis{grid-template-columns:repeat(4,1fr)}
 }
 </style>
+<style id="pgStyle">@media print{@page{size:58mm auto;margin:2mm}}</style>
 </head>
 <body>
 <div id="app">
@@ -223,7 +238,7 @@ let STORAGE_OK=true, MEM=null;
 const DEFAULTS=()=>({
   settings:{club:'نادي حصارات الرياضي الثقافي الاجتماعي',event:'الدورة الرياضية 2026',
     rate:89500,commission:10,showLbp:true,
-    footer:'',lastBackup:null,pin:'',voidPin:'',station:'A',feed:3,cutMark:true},
+    footer:'',lastBackup:null,pin:'',voidPin:'',station:'A',feed:3,cutMark:true,paper:58},
   kiosks:[{id:'k1',name:'كشك المأكولات'},{id:'k2',name:'كشك المشروبات'},{id:'k3',name:'كشك الحلويات'}],
   products:[
     {id:'p1',name:'شطيرة لحم',price:4,kiosk:'k1',on:true},
@@ -313,6 +328,19 @@ function findV(no){
 function outstanding(kid){
   return allVouchers().filter(v=>v.kiosk===kid && !v.void && !v.settled);
 }
+const defCom=()=>Number(S.settings.commission)||0;
+// effective organiser rate for a product (per-item override, else default)
+function pCom(p){
+  if(!p) return defCom();
+  const c=p.com;
+  return (c===undefined||c===null||c==='')?defCom():Math.max(0,Math.min(100,Number(c)||0));
+}
+// organiser share of a voucher — snapshot taken at sale time, fallback for old data
+function vCom(v){
+  if(v.com!==undefined&&v.com!==null) return Number(v.com)||0;
+  return v.total*defCom()/100;
+}
+const sumCom=list=>list.reduce((a,v)=>a+vCom(v),0);
 function vStatus(v){
   if(v.void) return {t:'ملغاة',c:'r'};
   if(v.settled) return {t:'مسوّاة',c:'g'};
@@ -495,7 +523,12 @@ function payDialog(){
 }
 function commitSale(pu,pl,change){
   const sh=openShift(); S.seq++; const st=STN();
-  const byK={}; cart.forEach(c=>{(byK[c.kiosk]=byK[c.kiosk]||[]).push(Object.assign({},c));});
+  const lines=cart.map(c=>{
+    const pr=S.products.find(x=>x.id===c.id);
+    return Object.assign({},c,{cr:c.cr!==undefined?c.cr:pCom(pr)});
+  });
+  const lCom=it=>it.price*it.qty*(Number(it.cr)||0)/100;
+  const byK={}; lines.forEach(c=>{(byK[c.kiosk]=byK[c.kiosk]||[]).push(Object.assign({},c));});
   const vouchers=[];
   Object.keys(byK).forEach(kid=>{
     const items=byK[kid];
@@ -503,14 +536,16 @@ function commitSale(pu,pl,change){
     if(k&&k.split){ // قسيمة منفصلة لكل وحدة
       items.forEach(c=>{ const n=Math.max(1,Math.round(c.qty));
         for(let i=1;i<=n;i++) vouchers.push({no:st+'-'+String(S.vseq++).padStart(4,'0'),kiosk:kid,
-          items:[Object.assign({},c,{qty:1})],total:c.price,void:false,settled:null,stn:st,unit:[i,n]});
+          items:[Object.assign({},c,{qty:1})],total:c.price,com:c.price*(Number(c.cr)||0)/100,
+          void:false,settled:null,stn:st,unit:[i,n]});
       });
     } else {
       vouchers.push({no:st+'-'+String(S.vseq++).padStart(4,'0'),kiosk:kid,items,
-        total:items.reduce((a,c)=>a+c.price*c.qty,0),void:false,settled:null,stn:st});
+        total:items.reduce((a,c)=>a+c.price*c.qty,0),com:items.reduce((a,c)=>a+lCom(c),0),
+        void:false,settled:null,stn:st});
     }
   });
-  const sale={no:st+S.seq,sid:st+'-'+S.seq,stn:st,ts:nowISO(),shift:sh?sh.id:null,lines:cart.map(c=>Object.assign({},c)),
+  const sale={no:st+S.seq,sid:st+'-'+S.seq,stn:st,ts:nowISO(),shift:sh?sh.id:null,lines:lines.map(c=>Object.assign({},c)),
     total:cartTotal(),paidUsd:pu,paidLbp:pl,rate:Number(S.settings.rate),change,vouchers};
   S.sales.push(sale); save();
   cart=[]; renderCart(); closeSheet(); renderHeader();
@@ -547,7 +582,13 @@ function reprintSale(sid){
   const s=S.sales.find(x=>(x.sid||String(x.no))===sid); if(!s){alert('الفاتورة غير موجودة.');return;}
   doPrint(s.vouchers.map(v=>vchHTML(v,s,true)).join(''));
 }
-function doPrint(html){ $('#printArea').innerHTML=html; setTimeout(()=>window.print(),60); }
+const PAPER=()=>Number(S.settings.paper)===80?80:58;
+function doPrint(html){
+  const w=PAPER();
+  $('#pgStyle').textContent='@media print{@page{size:'+w+'mm auto;margin:'+(w===80?'3mm':'2mm')+'}}';
+  const a=$('#printArea'); a.className=(w===80?'w80':''); a.innerHTML=html;
+  setTimeout(()=>window.print(),60);
+}
 
 /* =============== VOUCHERS =============== */
 let vFilter='out', vQuery='';
@@ -617,7 +658,7 @@ function renderSettle(){
   const cards=S.kiosks.map(k=>{
     const out=outstanding(k.id);
     const gross=out.reduce((a,v)=>a+v.total,0);
-    const net=gross*(100-com)/100;
+    const net=gross-sumCom(out);
     const old=out.filter(v=>daysAgo(v.ts)>=2).length;
     return `<div class="ksum ${out.length?'':'done'}" data-k="${k.id}">
       <div class="g"><b>${esc(k.name)}</b>
@@ -675,9 +716,10 @@ function settleDialog(kid){
   const body=$('#mbody');
   function calc(){
     const list = mode==='all'? out : out.filter(v=>picked.includes(v.no));
-    const g=list.reduce((a,v)=>a+v.total,0), c=g*com/100;
+    const g=list.reduce((a,v)=>a+v.total,0), c=sumCom(list);
+    const eff=g>0?Math.round(c/g*1000)/10:com;
     $('#calc').innerHTML=`عدد القسائم: <b>${list.length}</b> · قيمتها: <b>${usd(g)}</b><br>
-      حصة المنظّم ${com}%: <b>-${usd(c)}</b> · <b style="font-size:17px">المستحق للكشك: ${usd(g-c)}</b>`;
+      حصة المنظّم ${eff}%: <b>-${usd(c)}</b> · <b style="font-size:17px">المستحق للكشك: ${usd(g-c)}</b>`;
     return list;
   }
   function drawAll(){
@@ -745,10 +787,10 @@ function settleDialog(kid){
   $('#ok').onclick=()=>{
     const list=calc();
     if(!list.length){alert('لا قسائم مختارة.');return;}
-    const g=list.reduce((a,v)=>a+v.total,0), c=g*com/100;
+    const g=list.reduce((a,v)=>a+v.total,0), c=sumCom(list);
     S.sseq++;
     const st={id:uid('t'),no:'T'+String(S.sseq).padStart(3,'0'),kiosk:kid,ts:nowISO(),
-      nos:list.map(v=>v.no),gross:g,comPct:com,com:c,net:g-c,
+      nos:list.map(v=>v.no),gross:g,comPct:g>0?Math.round(c/g*1000)/10:com,com:c,net:g-c,
       by:$('#who').value.trim(),note:$('#note').value.trim(),mode};
     list.forEach(v=>{const f=findV(v.no); if(f)f.v.settled=st.id;});
     S.settlements.push(st); save(); closeSheet(); renderSettle(); renderHeader();
@@ -767,7 +809,7 @@ function printSettlement(st){
     <table>
       <tr><td>عدد القسائم</td><td class="a">${st.nos.length}</td></tr>
       <tr><td>قيمة القسائم</td><td class="a">${usd(st.gross)}</td></tr>
-      <tr><td>حصة المنظّم ${st.comPct}%</td><td class="a">-${usd(st.com)}</td></tr>
+      <tr><td>حصة المنظّم (${st.comPct}%)</td><td class="a">-${usd(st.com)}</td></tr>
     </table><hr>
     <div class="tot" style="text-align:center">المدفوع: ${usd(st.net)}</div>
     <div style="text-align:center;font-size:11px">${lbpTxt(st.net*s.rate)}</div><hr>
@@ -793,10 +835,10 @@ function renderReports(){
   const pu=sales.reduce((a,s)=>a+s.paidUsd,0);
   const pl=sales.reduce((a,s)=>a+s.paidLbp,0);
   const chg=sales.reduce((a,s)=>a+s.change,0);
-  const K={}; S.kiosks.forEach(k=>K[k.id]={n:0,sum:0,out:0,outSum:0});
+  const K={}; S.kiosks.forEach(k=>K[k.id]={n:0,sum:0,out:0,outSum:0,com:0});
   sales.forEach(s=>s.vouchers.forEach(v=>{
-    if(v.void)return; if(!K[v.kiosk])K[v.kiosk]={n:0,sum:0,out:0,outSum:0};
-    K[v.kiosk].n++;K[v.kiosk].sum+=v.total;
+    if(v.void)return; if(!K[v.kiosk])K[v.kiosk]={n:0,sum:0,out:0,outSum:0,com:0};
+    K[v.kiosk].n++;K[v.kiosk].sum+=v.total;K[v.kiosk].com+=vCom(v);
     if(!v.settled){K[v.kiosk].out++;K[v.kiosk].outSum+=v.total;}
   }));
   const P={}; sales.forEach(s=>s.lines.forEach(l=>{
@@ -804,12 +846,13 @@ function renderReports(){
     P[l.id].q+=l.qty;P[l.id].sum+=l.price*l.qty;}));
   const prods=Object.values(P).sort((a,b)=>b.sum-a.sum);
   const paidOut=S.settlements.reduce((a,s)=>a+s.net,0);
-  const outGross=S.kiosks.reduce((a,k)=>a+outstanding(k.id).reduce((x,v)=>x+v.total,0),0);
-  const stillOut=outGross*(100-com)/100;
+  const allOut=S.kiosks.reduce((a,k)=>a.concat(outstanding(k.id)),[]);
+  const outGross=allOut.reduce((x,v)=>x+v.total,0);
+  const stillOut=outGross-sumCom(allOut);
   // organiser share
-  const comPeriod=sales.reduce((a,s)=>a+s.vouchers.filter(v=>!v.void).reduce((x,v)=>x+v.total,0),0)*com/100;
+  const comPeriod=sales.reduce((a,s)=>a+sumCom(s.vouchers.filter(v=>!v.void)),0);
   const comReal=S.settlements.reduce((a,s)=>a+(s.com||0),0);
-  const comPend=outGross*com/100;
+  const comPend=sumCom(allOut);
   const unused=allVouchers().filter(v=>!v.void&&!v.settled&&daysAgo(v.ts)>=3);
 
   w.innerHTML=`
@@ -823,21 +866,23 @@ function renderReports(){
       <div class="kpi"><div class="v">${sales.length}</div><div class="l">عدد الفواتير</div></div>
       <div class="kpi"><div class="v">${usd(pu)}</div><div class="l">مقبوض دولار</div></div>
       <div class="kpi"><div class="v" style="font-size:16px">${lbp(pl).toLocaleString('en-US')}</div><div class="l">مقبوض ليرة</div></div>
-      <div class="kpi" style="border-color:var(--green)"><div class="v" style="color:var(--green)">${usd(comPeriod)}</div><div class="l">حصة المنظّم ${com}% (هذه الفترة)</div></div>
+      <div class="kpi" style="border-color:var(--green)"><div class="v" style="color:var(--green)">${usd(comPeriod)}</div><div class="l">حصة المنظّم (هذه الفترة)</div></div>
     </div>
     <div class="okbox">النقد الذي يجب أن يكون في الصندوق عن هذه الفترة:
       <b>${usd(pu-chg)}</b> بالدولار و<b>${lbp(pl).toLocaleString('en-US')} ل.ل.</b> بالليرة.</div>
 
     <div class="card">
-      <h3><span>الأكشاك — نسبة المنظّم ${com}%</span></h3>
+      <h3><span>الأكشاك — النسبة الافتراضية ${com}%</span></h3>
       <table>
-        <tr><th>الكشك</th><th class="n">قسائم</th><th class="n">قيمة</th><th class="n">معلّق</th><th class="n">للكشك</th></tr>
-        ${S.kiosks.map(k=>{const d=K[k.id]||{n:0,sum:0,out:0,outSum:0};
+        <tr><th>الكشك</th><th class="n">قسائم</th><th class="n">قيمة</th><th class="n">معلّق</th><th class="n">للمنظّم</th><th class="n">للكشك</th></tr>
+        ${S.kiosks.map(k=>{const d=K[k.id]||{n:0,sum:0,out:0,outSum:0,com:0};
           return `<tr><td>${esc(k.name)}</td><td class="n">${d.n}</td><td class="n">${usd(d.sum)}</td>
           <td class="n" style="${d.out?'color:var(--red);font-weight:700':''}">${d.out}</td>
-          <td class="n"><b>${usd(d.sum*(100-com)/100)}</b></td></tr>`;}).join('')}
+          <td class="n" style="color:var(--green)">${usd(d.com)}</td>
+          <td class="n"><b>${usd(d.sum-d.com)}</b></td></tr>`;}).join('')}
       </table>
-      <div class="mini" style="margin-top:8px">"معلّق" = قسائم هذه الفترة لم تُسوَّ بعد. التسوية تتمّ من تبويب التسوية.</div>
+      <div class="mini" style="margin-top:8px">"معلّق" = قسائم هذه الفترة لم تُسوَّ بعد. التسوية تتمّ من تبويب التسوية.
+      عمود "للمنظّم" يحسب نسبة كل صنف على حدة إذا كانت له نسبة خاصة.</div>
     </div>
 
     ${(()=>{const m={};S.sales.forEach(x=>{const k=x.stn||'—';m[k]=m[k]||{n:0,t:0};m[k].n++;m[k].t+=x.total;});
@@ -851,7 +896,7 @@ function renderReports(){
         <tr><td>متوقّعة — من قسائم لم تُسوَّ بعد</td><td class="n">${usd(comPend)}</td></tr>
         <tr><td><b>الإجمالي المتوقّع</b></td><td class="n"><b>${usd(comReal+comPend)}</b></td></tr>
       </table>
-      <div class="mini" style="margin-top:8px">حصة المنظّم = ${com}% تُحسم من قيمة قسائم كل كشك عند التسوية. تصبح "محقّقة" لحظة تنفيذ التسوية مع الكشك.
+      <div class="mini" style="margin-top:8px">حصة المنظّم تُحسم من قيمة قسائم كل كشك عند التسوية — بالنسبة الافتراضية ${com}% أو بالنسبة الخاصة بكل صنف إن وُجدت. تصبح "محقّقة" لحظة تنفيذ التسوية مع الكشك.
       القسائم التي لا يستعملها الزبائن تبقى بكاملها للمنظّم ولا تظهر هنا.</div>
     </div>
 
@@ -894,10 +939,10 @@ function renderReports(){
     .concat(prods.map(p=>[p.name,kName(p.kiosk),p.q,p.sum.toFixed(2)])));
   $('#csvS').onclick=()=>dlCSV('فواتير.csv',[['رقم','التاريخ','المجموع','مقبوض $','مقبوض ل.ل.','الباقي $','القسائم']]
     .concat(sales.map(s=>[s.no,fmtDT(s.ts),s.total.toFixed(2),s.paidUsd,s.paidLbp,s.change.toFixed(2),s.vouchers.map(v=>v.no).join(' ')])));
-  $('#csvV').onclick=()=>dlCSV('قسائم.csv',[['رقم القسيمة','الكشك','القيمة','التاريخ','الحالة','رقم التسوية']]
+  $('#csvV').onclick=()=>dlCSV('قسائم.csv',[['رقم القسيمة','الكشك','القيمة','حصة المنظّم','للكشك','التاريخ','الحالة','رقم التسوية']]
     .concat(allVouchers().sort((a,b)=>a.no.localeCompare(b.no)).map(v=>{
-      const st=v.settled?S.settlements.find(x=>x.id===v.settled):null;
-      return [v.no,kName(v.kiosk),v.total.toFixed(2),fmtDT(v.ts),vStatus(v).t,st?st.no:''];})));
+      const st=v.settled?S.settlements.find(x=>x.id===v.settled):null, c=vCom(v);
+      return [v.no,kName(v.kiosk),v.total.toFixed(2),c.toFixed(2),(v.total-c).toFixed(2),fmtDT(v.ts),vStatus(v).t,st?st.no:''];})));
 }
 function dlCSV(name,rows){
   const csv='﻿'+rows.map(r=>r.map(c=>{const s=String(c??'');
@@ -966,6 +1011,9 @@ function renderSettings(){
         أرقام القسائم تصير <b>${esc(STN())}-0001</b>. لو استعملت محطتان الرمز نفسه، تتكرّر الأرقام وتفسد التسوية.
       </div>
       <div class="fld"><label>عبارة أسفل القسيمة</label><input id="s_ft" value="${esc(st.footer)}"></div>
+      <div class="fld"><label>عرض ورق الطابعة</label>
+        <select id="s_paper"><option value="58" ${PAPER()===58?'selected':''}>٥٨ مم (طابعة صغيرة / محمولة)</option>
+        <option value="80" ${PAPER()===80?'selected':''}>٨٠ مم (طابعة مكتبية)</option></select></div>
       <div class="fld"><label>أسطر فراغ بعد كل قسيمة (لتسهيل القص) — من ٠ إلى ٨</label>
         <input id="s_feed" class="num" type="number" min="0" max="8" step="1" value="${st.feed===undefined?3:st.feed}"></div>
       <div class="fld"><label><input type="checkbox" id="s_cut" ${st.cutMark!==false?'checked':''} style="width:auto;margin-left:6px">طباعة خط القص ✂ بين القسائم</label></div>
@@ -1006,7 +1054,8 @@ function renderSettings(){
     <div class="card"><h3><span>الأصناف</span></h3><div class="list" id="plist"></div>
       <div style="margin-top:10px"><div class="row2"><input id="pn" placeholder="اسم الصنف"><input id="pp" class="num" type="number" step="0.25" placeholder="السعر $"></div>
       <div class="row2" style="margin-top:8px"><select id="pk">${S.kiosks.map(k=>`<option value="${k.id}">${esc(k.name)}</option>`).join('')}</select>
-      <button class="btn ghost" id="padd">إضافة</button></div></div></div>
+      <input id="pc" class="num" type="number" min="0" max="100" step="1" placeholder="نسبة % (فارغ = ${st.commission}%)"></div>
+      <button class="btn ghost" id="padd" style="width:100%;margin-top:8px">إضافة</button></div></div>
 
     <div class="card"><h3><span>البيانات والحفظ</span></h3>
       <div class="mini" style="margin-bottom:10px">
@@ -1038,6 +1087,7 @@ function renderSettings(){
     st.footer=$('#s_ft').value; st.showLbp=$('#s_lbp').checked;
     st.feed=Math.max(0,Math.min(8,Math.round(Number($('#s_feed').value)||0)));
     st.cutMark=$('#s_cut').checked;
+    st.paper=Number($('#s_paper').value)===80?80:58;
     save();renderHeader();renderCart();alert('حُفظ.');};
 
   $('#pinSave').onclick=()=>{
@@ -1078,14 +1128,17 @@ function renderSettings(){
   const pl=$('#plist');pl.innerHTML='';
   S.products.forEach(p=>{
     const d=el('div','it');
-    d.innerHTML=`<div class="g"><b>${esc(p.name)}</b> <span class="tag">${usd(p.price)}</span><small>${esc(kName(p.kiosk))}${p.on===false?' — موقوف':''}</small></div>`;
+    const ov=!(p.com===undefined||p.com===null||p.com==='');
+    d.innerHTML=`<div class="g"><b>${esc(p.name)}</b> <span class="tag">${usd(p.price)}</span>${ov?` <span class="tag" style="background:var(--goldL);color:#6B5210">نسبة ${pCom(p)}%</span>`:''}<small>${esc(kName(p.kiosk))}${p.on===false?' — موقوف':''}</small></div>`;
     const e=el('button','iconbtn','✎');e.onclick=()=>editProduct(p);
     const b=el('button','iconbtn d','✕');
     b.onclick=()=>{if(confirm('حذف '+p.name+'؟')){S.products=S.products.filter(x=>x.id!==p.id);save();renderSettings();renderGrid();}};
     d.appendChild(e);d.appendChild(b);pl.appendChild(d);});
   $('#padd').onclick=()=>{const n=$('#pn').value.trim(),pr=Number($('#pp').value);
     if(!n||!(pr>0)){alert('أدخل الاسم والسعر.');return;}
-    S.products.push({id:uid('p'),name:n,price:pr,kiosk:$('#pk').value,on:true});
+    const cv=$('#pc').value.trim();
+    S.products.push({id:uid('p'),name:n,price:pr,kiosk:$('#pk').value,on:true,
+      com:cv===''?null:Math.max(0,Math.min(100,Number(cv)||0))});
     save();renderSettings();renderGrid();};
 
   $('#exp').onclick=exportJSON;
@@ -1124,11 +1177,17 @@ function editProduct(p){
     <div class="fld"><label>الاسم</label><input id="en" value="${esc(p.name)}"></div>
     <div class="fld"><label>السعر بالدولار</label><input id="ep" class="num" type="number" step="0.25" value="${p.price}"></div>
     <div class="fld"><label>الكشك</label><select id="ek">${S.kiosks.map(k=>`<option value="${k.id}" ${k.id===p.kiosk?'selected':''}>${esc(k.name)}</option>`).join('')}</select></div>
+    <div class="fld"><label>نسبة المنظّم لهذا الصنف %</label>
+      <input id="ec" class="num" type="number" min="0" max="100" step="1" placeholder="اتركه فارغاً = الافتراضية ${defCom()}%" value="${(p.com===undefined||p.com===null||p.com==='')?'':p.com}"></div>
+    <div class="mini" style="margin:-4px 0 12px;line-height:1.6">فارغ = يتبع النسبة الافتراضية (${defCom()}%). اكتب رقماً لتخصيص نسبة مختلفة لهذا الصنف — مثلاً <b>0</b> إذا كان الصنف بلا حصة للمنظّم.
+      تغيير النسبة لا يمسّ القسائم المطبوعة سابقاً؛ تبقى محسوبة بنسبتها وقت البيع.</div>
     <div class="fld"><label><input type="checkbox" id="eo" ${p.on!==false?'checked':''} style="width:auto;margin-left:6px">متوفّر للبيع</label></div>
     <div style="display:flex;gap:8px"><button class="btn ghost" onclick="closeSheet()">إلغاء</button>
     <button class="btn main" id="ok">حفظ</button></div>`);
   $('#ok').onclick=()=>{p.name=$('#en').value.trim()||p.name;p.price=Number($('#ep').value)||p.price;
-    p.kiosk=$('#ek').value;p.on=$('#eo').checked;save();closeSheet();renderSettings();renderGrid();};
+    p.kiosk=$('#ek').value;p.on=$('#eo').checked;
+    const cv=$('#ec').value.trim(); p.com=cv===''?null:Math.max(0,Math.min(100,Number(cv)||0));
+    save();closeSheet();renderSettings();renderGrid();};
 }
 function mergeData(o){
   if(!o||!o.sales||!o.settings){ alert('ملف غير صالح.'); return; }
