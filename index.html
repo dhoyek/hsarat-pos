@@ -47,7 +47,8 @@ main{flex:1;overflow:hidden;position:relative}
 .pcard{background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:10px 6px;text-align:center;min-height:86px;display:flex;flex-direction:column;justify-content:center;gap:5px}
 .pcard:active{background:var(--greenL);border-color:var(--green)}
 .pcard .n{font-weight:700;font-size:14px;line-height:1.25}
-.pcard .p{font-size:15px;font-weight:800;color:var(--green)}
+.pcard .p{font-size:15px;font-weight:800;color:var(--green);direction:ltr;white-space:nowrap}
+.pcard .p .cu{font-size:10px;font-weight:700;opacity:.7}
 .pcard .k{font-size:11px;color:var(--mut)}
 .cart{background:#fff;border-top:2px solid var(--green);flex:none;max-height:52%;display:flex;flex-direction:column}
 .cart .hd{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line)}
@@ -59,7 +60,7 @@ main{flex:1;overflow:hidden;position:relative}
 .ci .qty{display:flex;align-items:center;gap:2px}
 .ci .qty button{width:30px;height:30px;border-radius:8px;background:var(--greenL);color:var(--green);font-size:19px;font-weight:800;line-height:1}
 .ci .qty span{min-width:30px;text-align:center;font-weight:800}
-.ci .tot{min-width:64px;text-align:left;font-weight:800;direction:ltr}
+.ci .tot{min-width:78px;text-align:left;font-weight:800;direction:ltr;white-space:nowrap}
 .ci .del{width:30px;height:30px;color:var(--red);font-size:18px}
 .sums{padding:8px 12px;background:var(--greenL)}
 .sums .r{display:flex;justify-content:space-between;align-items:baseline;padding:2px 0}
@@ -368,7 +369,7 @@ const EPS=()=>BASE()==='lbp'?500:0.005;
 const STEP=()=>BASE()==='lbp'?1000:0.25;
 const moneyN=n=>BASE()==='lbp'?lbp(n).toLocaleString('en-US'):(Math.round(n*100)/100).toFixed(2);
 const money=n=>BASE()==='lbp'?(lbp(n).toLocaleString('en-US')+' ل.ل.'):usd(n);
-const moneyC=n=>BASE()==='lbp'?(Math.abs(n)>=100000?Math.round(n/1000).toLocaleString('en-US')+'K':lbp(n).toLocaleString('en-US')):usd(n);
+const moneyC=n=>BASE()==='lbp'?lbp(n).toLocaleString('en-US'):usd(n);
 const altAt=(n,r)=>BASE()==='lbp'?usd(n/(Number(r)||RATE())):lbpTxt(n*(Number(r)||RATE()));
 const alt=n=>altAt(n,RATE());
 const altName=()=>BASE()==='lbp'?'بالدولار':'بالليرة';
@@ -526,7 +527,7 @@ function renderGrid(){
   if(!list.length){g.appendChild(el('div','empty','لا أصناف — أضفها من الإعدادات'));return;}
   list.forEach(p=>{
     const c=el('button','pcard');
-    c.innerHTML=`<div class="n">${esc(p.name)}</div><div class="p">${moneyC(p.price)}</div><div class="k">${esc(kName(p.kiosk))}</div>`;
+    c.innerHTML=`<div class="n">${esc(p.name)}</div><div class="p">${moneyC(p.price)}<span class="cu">${BASE()==='lbp'?'\u00A0ل.ل.':''}</span></div><div class="k">${esc(kName(p.kiosk))}</div>`;
     c.onclick=()=>{const f=cart.find(x=>x.id===p.id);if(f)f.qty++;else cart.push({id:p.id,name:p.name,price:p.price,kiosk:p.kiosk,qty:1});renderCart();};
     g.appendChild(c);
   });
@@ -539,7 +540,7 @@ function renderCart(){
     box.innerHTML='';
     cart.forEach((c,i)=>{
       const d=el('div','ci');
-      d.innerHTML=`<div class="nm">${esc(c.name)}<small>${esc(kName(c.kiosk))} · ${moneyC(c.price)}</small></div>
+      d.innerHTML=`<div class="nm">${esc(c.name)}<small>${esc(kName(c.kiosk))} · ${money(c.price)}</small></div>
         <div class="qty"><button data-a="-">−</button><span>${c.qty}</span><button data-a="+">+</button></div>
         <div class="tot">${moneyC(c.price*c.qty)}</div><button class="del">✕</button>`;
       d.querySelector('[data-a="-"]').onclick=()=>{c.qty--;if(c.qty<=0)cart.splice(i,1);renderCart();};
@@ -1220,7 +1221,7 @@ function renderSettings(){
   S.products.forEach(p=>{
     const d=el('div','it');
     const ov=!(p.com===undefined||p.com===null||p.com==='');
-    d.innerHTML=`<div class="g"><b>${esc(p.name)}</b> <span class="tag">${moneyC(p.price)}</span>${ov?` <span class="tag" style="background:var(--goldL);color:#6B5210">نسبة ${pCom(p)}%</span>`:''}<small>${esc(kName(p.kiosk))}${p.on===false?' — موقوف':''}</small></div>`;
+    d.innerHTML=`<div class="g"><b>${esc(p.name)}</b> <span class="tag">${money(p.price)}</span>${ov?` <span class="tag" style="background:var(--goldL);color:#6B5210">نسبة ${pCom(p)}%</span>`:''}<small>${esc(kName(p.kiosk))}${p.on===false?' — موقوف':''}</small></div>`;
     const e=el('button','iconbtn','✎');e.onclick=()=>editProduct(p);
     const b=el('button','iconbtn d','✕');
     b.onclick=()=>{if(confirm('حذف '+p.name+'؟')){S.products=S.products.filter(x=>x.id!==p.id);save();renderSettings();renderGrid();}};
