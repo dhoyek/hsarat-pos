@@ -210,7 +210,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
         <div class="items" id="cartItems"><div class="empty">اضغط على الأصناف لإضافتها</div></div>
         <div class="sums">
           <div class="r"><span>المجموع</span><b id="totUsd">$0.00</b></div>
-          <div class="r lbp"><span>بالليرة</span><b id="totLbp">0 ل.ل.</b></div>
+          <div class="r lbp"><span id="totAltL">بالليرة</span><b id="totLbp">0 ل.ل.</b></div>
         </div>
         <div class="noshift" id="noShift"><span>لا توجد وردية مفتوحة — لا يمكن القبض قبل فتحها.</span><button id="openShiftBtn">افتح وردية</button></div>
         <div class="payrow"><button class="btn main" id="payBtn" disabled>قبض وطباعة</button></div>
@@ -237,7 +237,7 @@ let STORAGE_OK=true, MEM=null;
 
 const DEFAULTS=()=>({
   settings:{club:'نادي حصارات الرياضي الثقافي الاجتماعي',event:'الدورة الرياضية 2026',
-    rate:89500,commission:10,showLbp:true,
+    rate:89500,commission:10,showLbp:true,base:'usd',
     footer:'',lastBackup:null,pin:'',voidPin:'',station:'A',feed:3,cutMark:true,paper:58},
   kiosks:[{id:'k1',name:'كشك المأكولات'},{id:'k2',name:'كشك المشروبات'},{id:'k3',name:'كشك الحلويات'}],
   products:[
@@ -278,6 +278,7 @@ function load(){
   for(const k in d.settings) if(S.settings[k]===undefined) S.settings[k]=d.settings[k];
   S.sales.forEach(s=>s.vouchers.forEach(v=>{ if(v.settled===undefined) v.settled=null; }));
   if(S.settings.footer==='تُسلَّم هذه القسيمة للكشك — لا تُستبدل بنقد') S.settings.footer='';
+  if(S.settings.base!=='lbp') S.settings.base='usd';
   S.kiosks.forEach(k=>{ if(k.split===undefined) k.split=false; });
   try{ const c=localStorage.getItem(CKEY); if(c) cart=JSON.parse(c)||[]; }catch(e){}
 }
@@ -300,6 +301,17 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&g
 const usd=n=>'$'+(Math.round(n*100)/100).toFixed(2);
 const lbp=n=>Math.round(n/1000)*1000;
 const lbpTxt=n=>lbp(n).toLocaleString('en-US')+' ل.ل.';
+/* ---- base-currency layer: amounts in S are stored in the BASE currency ---- */
+const BASE=()=>S.settings.base==='lbp'?'lbp':'usd';
+const RATE=()=>Number(S.settings.rate)||1;
+const EPS=()=>BASE()==='lbp'?500:0.005;
+const STEP=()=>BASE()==='lbp'?1000:0.25;
+const moneyN=n=>BASE()==='lbp'?lbp(n).toLocaleString('en-US'):(Math.round(n*100)/100).toFixed(2);
+const money=n=>BASE()==='lbp'?(lbp(n).toLocaleString('en-US')+' ل.ل.'):usd(n);
+const moneyC=n=>BASE()==='lbp'?(Math.abs(n)>=100000?Math.round(n/1000).toLocaleString('en-US')+'K':lbp(n).toLocaleString('en-US')):usd(n);
+const altAt=(n,r)=>BASE()==='lbp'?usd(n/(Number(r)||RATE())):lbpTxt(n*(Number(r)||RATE()));
+const alt=n=>altAt(n,RATE());
+const altName=()=>BASE()==='lbp'?'بالدولار':'بالليرة';
 const kName=id=>(S.kiosks.find(k=>k.id===id)||{name:'—'}).name;
 const nowISO=()=>new Date().toISOString();
 const p2=n=>String(n).padStart(2,'0');
@@ -454,7 +466,7 @@ function renderGrid(){
   if(!list.length){g.appendChild(el('div','empty','لا أصناف — أضفها من الإعدادات'));return;}
   list.forEach(p=>{
     const c=el('button','pcard');
-    c.innerHTML=`<div class="n">${esc(p.name)}</div><div class="p">${usd(p.price)}</div><div class="k">${esc(kName(p.kiosk))}</div>`;
+    c.innerHTML=`<div class="n">${esc(p.name)}</div><div class="p">${moneyC(p.price)}</div><div class="k">${esc(kName(p.kiosk))}</div>`;
     c.onclick=()=>{const f=cart.find(x=>x.id===p.id);if(f)f.qty++;else cart.push({id:p.id,name:p.name,price:p.price,kiosk:p.kiosk,qty:1});renderCart();};
     g.appendChild(c);
   });
@@ -467,9 +479,9 @@ function renderCart(){
     box.innerHTML='';
     cart.forEach((c,i)=>{
       const d=el('div','ci');
-      d.innerHTML=`<div class="nm">${esc(c.name)}<small>${esc(kName(c.kiosk))} · ${usd(c.price)}</small></div>
+      d.innerHTML=`<div class="nm">${esc(c.name)}<small>${esc(kName(c.kiosk))} · ${moneyC(c.price)}</small></div>
         <div class="qty"><button data-a="-">−</button><span>${c.qty}</span><button data-a="+">+</button></div>
-        <div class="tot">${usd(c.price*c.qty)}</div><button class="del">✕</button>`;
+        <div class="tot">${moneyC(c.price*c.qty)}</div><button class="del">✕</button>`;
       d.querySelector('[data-a="-"]').onclick=()=>{c.qty--;if(c.qty<=0)cart.splice(i,1);renderCart();};
       d.querySelector('[data-a="+"]').onclick=()=>{c.qty++;renderCart();};
       d.querySelector('.del').onclick=()=>{cart.splice(i,1);renderCart();};
@@ -477,8 +489,9 @@ function renderCart(){
     });
   }
   const t=cartTotal();
-  $('#totUsd').textContent=usd(t);
-  $('#totLbp').textContent=lbpTxt(t*S.settings.rate);
+  $('#totUsd').textContent=money(t);
+  $('#totLbp').textContent=alt(t);
+  $('#totAltL').textContent=altName();
   $('#totLbp').parentElement.style.display=S.settings.showLbp?'flex':'none';
   $('#payBtn').disabled=!cart.length;
   $('#noShift').classList.toggle('on',!openShift());
@@ -490,11 +503,12 @@ $('#openShiftBtn').onclick=()=>shiftDialog();
 $('#payBtn').onclick=()=>{ if(!openShift()){ shiftDialog(); return; } payDialog(); };
 
 function payDialog(){
-  const t=cartTotal(), r=Number(S.settings.rate);
+  const t=cartTotal(), r=RATE();
+  const tU=BASE()==='lbp'?t/r:t, tL=BASE()==='lbp'?t:t*r;
   sheet(`<h2>القبض</h2>
     <div class="sums" style="border-radius:12px;margin-bottom:12px">
-      <div class="r"><span>المطلوب</span><b>${usd(t)}</b></div>
-      <div class="r lbp"><span>بالليرة</span><b>${lbpTxt(t*r)}</b></div></div>
+      <div class="r"><span>المطلوب</span><b>${money(t)}</b></div>
+      <div class="r lbp"><span>${altName()}</span><b>${alt(t)}</b></div></div>
     <div class="fld"><label>المقبوض بالدولار</label><input id="pu" class="num" type="number" step="0.5" inputmode="decimal" placeholder="0"></div>
     <div class="quick" id="qu"></div>
     <div class="fld"><label>المقبوض بالليرة</label><input id="pl" class="num" type="number" step="1000" inputmode="numeric" placeholder="0"></div>
@@ -503,21 +517,24 @@ function payDialog(){
     <div style="display:flex;gap:8px"><button class="btn ghost" onclick="closeSheet()">إلغاء</button>
     <button class="btn main" id="doPay">تأكيد وطباعة</button></div>`);
   const pu=$('#pu'),pl=$('#pl');
-  [...new Set([t,Math.ceil(t),Math.ceil(t/5)*5,Math.ceil(t/10)*10])].slice(0,4).forEach(v=>{
+  [...new Set([Math.round(tU*100)/100,Math.ceil(tU),Math.ceil(tU/5)*5,Math.ceil(tU/10)*10])].slice(0,4).forEach(v=>{
     const b=el('button','','$'+v.toFixed(2).replace(/\.00$/,''));b.onclick=()=>{pu.value=v;upd();};$('#qu').appendChild(b);});
-  [t*r,Math.ceil(t*r/100000)*100000,Math.ceil(t*r/500000)*500000,Math.ceil(t*r/1000000)*1000000]
+  [tL,Math.ceil(tL/100000)*100000,Math.ceil(tL/500000)*500000,Math.ceil(tL/1000000)*1000000]
     .map(lbp).filter((v,i,a)=>a.indexOf(v)===i).slice(0,4).forEach(v=>{
       const b=el('button','',(v/1000).toLocaleString('en-US')+'K');b.onclick=()=>{pl.value=v;upd();};$('#ql').appendChild(b);});
-  const paid=()=>(Number(pu.value)||0)+(Number(pl.value)||0)/r;
+  // paid, expressed in the BASE currency
+  const paid=()=>BASE()==='lbp'
+    ? (Number(pl.value)||0)+(Number(pu.value)||0)*r
+    : (Number(pu.value)||0)+(Number(pl.value)||0)/r;
   function upd(){
     const d=paid()-t,c=$('#chg');
     if(!pu.value&&!pl.value){c.textContent='الباقي: —';c.style.color='var(--mut)';return;}
-    if(d<-0.005){c.textContent='ناقص '+usd(-d);c.style.color='var(--red)';}
-    else{c.textContent='الباقي: '+usd(d)+'  ·  '+lbpTxt(d*r);c.style.color='var(--green)';}
+    if(d<-EPS()){c.textContent='ناقص '+money(-d);c.style.color='var(--red)';}
+    else{c.textContent='الباقي: '+money(d)+'  ·  '+alt(d);c.style.color='var(--green)';}
   }
   pu.oninput=upd;pl.oninput=upd;
   $('#doPay').onclick=()=>{const d=paid()-t;
-    if(d<-0.005){alert('المبلغ المقبوض أقل من المطلوب.');return;}
+    if(d<-EPS()){alert('المبلغ المقبوض أقل من المطلوب.');return;}
     commitSale(Number(pu.value)||0,Number(pl.value)||0,d);};
   setTimeout(()=>pu.focus(),80);
 }
@@ -546,7 +563,7 @@ function commitSale(pu,pl,change){
     }
   });
   const sale={no:st+S.seq,sid:st+'-'+S.seq,stn:st,ts:nowISO(),shift:sh?sh.id:null,lines:lines.map(c=>Object.assign({},c)),
-    total:cartTotal(),paidUsd:pu,paidLbp:pl,rate:Number(S.settings.rate),change,vouchers};
+    total:cartTotal(),paidUsd:pu,paidLbp:pl,rate:RATE(),base:BASE(),change,vouchers};
   S.sales.push(sale); save();
   cart=[]; renderCart(); closeSheet(); renderHeader();
   printVouchers(sale);
@@ -565,8 +582,8 @@ function vchHTML(v,sale,again){
     <div class="club">${esc(st.club)}</div><div class="ev">${esc(st.event)}</div><hr>
     <div class="kiosk">${esc(kName(v.kiosk))}</div>
     <div class="no">${v.no}</div><hr>
-    <table>${v.items.map(it=>`<tr><td class="q">${it.qty}×</td><td>${esc(it.name)}</td><td class="a">${usd(it.price*it.qty)}</td></tr>`).join('')}</table><hr>
-    <div class="tot">${usd(v.total)}${st.showLbp?' · '+lbpTxt(v.total*(sale.rate||st.rate)):''}</div><hr>
+    <table>${v.items.map(it=>`<tr><td class="q">${it.qty}×</td><td>${esc(it.name)}</td><td class="a">${moneyN(it.price*it.qty)}</td></tr>`).join('')}</table><hr>
+    <div class="tot">${money(v.total)}${st.showLbp?' · '+altAt(v.total,sale.rate):''}</div><hr>
     <div class="ft">فاتورة ${sale.no} · ${fmtDT(sale.ts)}</div>
     ${v.unit?`<div class="ft">وحدة ${v.unit[0]} من ${v.unit[1]}</div>`:''}
     ${again?'<div class="ft rp">إعادة طباعة — القسيمة نفسها، لا تُحتسب مرتين</div>':''}
@@ -599,7 +616,7 @@ function renderVouchers(){
   w.innerHTML=`${last?`<div class="card"><h3><span>إعادة الطباعة</span></h3>
       <div class="mini" style="margin-bottom:8px">إذا فشلت الطباعة أو انقطع الورق، أعد طباعة القسيمة — الرقم يبقى نفسه ولا تُحتسب مرتين في التسوية.</div>
       <button class="btn ghost" id="rpLast" style="width:100%;border-color:var(--green);color:var(--green)">
-        إعادة طباعة آخر فاتورة — ${esc(last.no)} · ${last.vouchers.length} قسيمة · ${usd(last.total)}</button></div>`:''}
+        إعادة طباعة آخر فاتورة — ${esc(last.no)} · ${last.vouchers.length} قسيمة · ${money(last.total)}</button></div>`:''}
     <div class="card">
       <div class="fld" style="margin-bottom:8px"><input id="vq" class="num" placeholder="بحث برقم القسيمة" inputmode="numeric" value="${esc(vQuery)}"></div>
       <div class="chips" id="vchips">${F.map(f=>`<button data-f="${f[0]}" class="${vFilter===f[0]?'on':''}">${f[1]}</button>`).join('')}</div>
@@ -618,12 +635,12 @@ function renderVouchers(){
     const box=$('#vlist');
     const tot=list.filter(v=>!v.void).reduce((a,v)=>a+v.total,0);
     if(!list.length){box.innerHTML='<div class="empty">لا نتائج</div>';return;}
-    box.innerHTML=`<div class="mini" style="margin-bottom:6px">${list.length} قسيمة · ${usd(tot)}</div>`;
+    box.innerHTML=`<div class="mini" style="margin-bottom:6px">${list.length} قسيمة · ${money(tot)}</div>`;
     list.slice(0,300).forEach(v=>{
       const st=vStatus(v), d=el('div','it');
       const stl=v.settled?S.settlements.find(x=>x.id===v.settled):null;
       d.innerHTML=`<div class="g"><b>${v.no}</b> <span class="tag">${esc(kName(v.kiosk))}</span> <span class="tag ${st.c}">${st.t}</span>
-        <small>${v.items.map(i=>i.qty+'× '+esc(i.name)).join(' · ')} — ${usd(v.total)} — ${fmtDT(v.ts)}${stl?' — تسوية '+stl.no+' ('+fmtD(stl.ts)+')':''}${v.voidTs?' — أُلغيت '+fmtDT(v.voidTs):''}</small></div>`;
+        <small>${v.items.map(i=>i.qty+'× '+esc(i.name)).join(' · ')} — ${money(v.total)} — ${fmtDT(v.ts)}${stl?' — تسوية '+stl.no+' ('+fmtD(stl.ts)+')':''}${v.voidTs?' — أُلغيت '+fmtDT(v.voidTs):''}</small></div>`;
       const rp=el('button','iconbtn','⎙'); rp.title='إعادة طباعة';
       rp.onclick=()=>reprintVoucher(v.no); d.appendChild(rp);
       if(!v.settled){
@@ -663,7 +680,7 @@ function renderSettle(){
     return `<div class="ksum ${out.length?'':'done'}" data-k="${k.id}">
       <div class="g"><b>${esc(k.name)}</b>
         <small>${out.length?`${out.length} قسيمة غير مسوّاة${old?` · منها ${old} أقدم من يومين`:''}`:'لا شيء معلّق — كل القسائم مسوّاة'}</small></div>
-      <div class="v"><b>${usd(net)}</b><small>المستحق للكشك</small></div>
+      <div class="v"><b>${money(net)}</b><small>المستحق للكشك</small></div>
     </div>`;}).join('');
 
   const done=S.settlements.slice().reverse();
@@ -682,7 +699,7 @@ function renderSettle(){
     done.forEach(st=>{
       const d=el('div','it');
       d.innerHTML=`<div class="g"><b>تسوية ${st.no}</b> <span class="tag">${esc(kName(st.kiosk))}</span>
-        <small>${fmtDT(st.ts)} · ${st.nos.length} قسيمة · قيمة ${usd(st.gross)} · مدفوع <b>${usd(st.net)}</b>${st.by?' · استلمها '+esc(st.by):''}</small></div>`;
+        <small>${fmtDT(st.ts)} · ${st.nos.length} قسيمة · قيمة ${money(st.gross)} · مدفوع <b>${money(st.net)}</b>${st.by?' · استلمها '+esc(st.by):''}</small></div>`;
       const pr=el('button','iconbtn','🖨');
       pr.onclick=()=>printSettlement(st);
       const un=el('button','iconbtn d','↺');
@@ -718,8 +735,8 @@ function settleDialog(kid){
     const list = mode==='all'? out : out.filter(v=>picked.includes(v.no));
     const g=list.reduce((a,v)=>a+v.total,0), c=sumCom(list);
     const eff=g>0?Math.round(c/g*1000)/10:com;
-    $('#calc').innerHTML=`عدد القسائم: <b>${list.length}</b> · قيمتها: <b>${usd(g)}</b><br>
-      حصة المنظّم ${eff}%: <b>-${usd(c)}</b> · <b style="font-size:17px">المستحق للكشك: ${usd(g-c)}</b>`;
+    $('#calc').innerHTML=`عدد القسائم: <b>${list.length}</b> · قيمتها: <b>${money(g)}</b><br>
+      حصة المنظّم ${eff}%: <b>-${money(c)}</b> · <b style="font-size:17px">المستحق للكشك: ${money(g-c)}</b>`;
     return list;
   }
   function drawAll(){
@@ -808,11 +825,11 @@ function printSettlement(st){
     <div style="text-align:center;font-size:11px">${fmtDT(st.ts)}</div><hr>
     <table>
       <tr><td>عدد القسائم</td><td class="a">${st.nos.length}</td></tr>
-      <tr><td>قيمة القسائم</td><td class="a">${usd(st.gross)}</td></tr>
-      <tr><td>حصة المنظّم (${st.comPct}%)</td><td class="a">-${usd(st.com)}</td></tr>
+      <tr><td>قيمة القسائم</td><td class="a">${money(st.gross)}</td></tr>
+      <tr><td>حصة المنظّم (${st.comPct}%)</td><td class="a">-${money(st.com)}</td></tr>
     </table><hr>
-    <div class="tot" style="text-align:center">المدفوع: ${usd(st.net)}</div>
-    <div style="text-align:center;font-size:11px">${lbpTxt(st.net*s.rate)}</div><hr>
+    <div class="tot" style="text-align:center">المدفوع: ${money(st.net)}</div>
+    <div style="text-align:center;font-size:11px">${alt(st.net)}</div><hr>
     <div class="ft" style="text-align:right">أرقام القسائم:</div>
     <div class="nl">${chunks.join(' ')}</div><hr>
     ${st.note?`<div class="ft" style="text-align:right">ملاحظة: ${esc(st.note)}</div><hr>`:''}
@@ -834,7 +851,8 @@ function renderReports(){
   const tot=sales.reduce((a,s)=>a+s.total,0);
   const pu=sales.reduce((a,s)=>a+s.paidUsd,0);
   const pl=sales.reduce((a,s)=>a+s.paidLbp,0);
-  const chg=sales.reduce((a,s)=>a+s.change,0);
+  const chgU=sales.reduce((a,s)=>a+(s.base==='lbp'?0:s.change),0);
+  const chgL=sales.reduce((a,s)=>a+(s.base==='lbp'?s.change:0),0);
   const K={}; S.kiosks.forEach(k=>K[k.id]={n:0,sum:0,out:0,outSum:0,com:0});
   sales.forEach(s=>s.vouchers.forEach(v=>{
     if(v.void)return; if(!K[v.kiosk])K[v.kiosk]={n:0,sum:0,out:0,outSum:0,com:0};
@@ -862,24 +880,24 @@ function renderReports(){
       <button class="btn ghost" data-s="all" style="${repScope==='all'?'background:var(--green);color:#fff;border-color:var(--green)':''}">الكل</button>
     </div></div>
     <div class="kpis">
-      <div class="kpi"><div class="v">${usd(tot)}</div><div class="l">مجموع المبيعات</div></div>
+      <div class="kpi"><div class="v">${money(tot)}</div><div class="l">مجموع المبيعات</div></div>
       <div class="kpi"><div class="v">${sales.length}</div><div class="l">عدد الفواتير</div></div>
       <div class="kpi"><div class="v">${usd(pu)}</div><div class="l">مقبوض دولار</div></div>
       <div class="kpi"><div class="v" style="font-size:16px">${lbp(pl).toLocaleString('en-US')}</div><div class="l">مقبوض ليرة</div></div>
-      <div class="kpi" style="border-color:var(--green)"><div class="v" style="color:var(--green)">${usd(comPeriod)}</div><div class="l">حصة المنظّم (هذه الفترة)</div></div>
+      <div class="kpi" style="border-color:var(--green)"><div class="v" style="color:var(--green)">${money(comPeriod)}</div><div class="l">حصة المنظّم (هذه الفترة)</div></div>
     </div>
     <div class="okbox">النقد الذي يجب أن يكون في الصندوق عن هذه الفترة:
-      <b>${usd(pu-chg)}</b> بالدولار و<b>${lbp(pl).toLocaleString('en-US')} ل.ل.</b> بالليرة.</div>
+      <b>${usd(pu-chgU)}</b> بالدولار و<b>${lbp(pl-chgL).toLocaleString('en-US')} ل.ل.</b> بالليرة.</div>
 
     <div class="card">
       <h3><span>الأكشاك — النسبة الافتراضية ${com}%</span></h3>
       <table>
         <tr><th>الكشك</th><th class="n">قسائم</th><th class="n">قيمة</th><th class="n">معلّق</th><th class="n">للمنظّم</th><th class="n">للكشك</th></tr>
         ${S.kiosks.map(k=>{const d=K[k.id]||{n:0,sum:0,out:0,outSum:0,com:0};
-          return `<tr><td>${esc(k.name)}</td><td class="n">${d.n}</td><td class="n">${usd(d.sum)}</td>
+          return `<tr><td>${esc(k.name)}</td><td class="n">${d.n}</td><td class="n">${money(d.sum)}</td>
           <td class="n" style="${d.out?'color:var(--red);font-weight:700':''}">${d.out}</td>
-          <td class="n" style="color:var(--green)">${usd(d.com)}</td>
-          <td class="n"><b>${usd(d.sum-d.com)}</b></td></tr>`;}).join('')}
+          <td class="n" style="color:var(--green)">${money(d.com)}</td>
+          <td class="n"><b>${money(d.sum-d.com)}</b></td></tr>`;}).join('')}
       </table>
       <div class="mini" style="margin-top:8px">"معلّق" = قسائم هذه الفترة لم تُسوَّ بعد. التسوية تتمّ من تبويب التسوية.
       عمود "للمنظّم" يحسب نسبة كل صنف على حدة إذا كانت له نسبة خاصة.</div>
@@ -888,13 +906,13 @@ function renderReports(){
     ${(()=>{const m={};S.sales.forEach(x=>{const k=x.stn||'—';m[k]=m[k]||{n:0,t:0};m[k].n++;m[k].t+=x.total;});
       const ks=Object.keys(m); return ks.length>1?`<div class="card"><h3><span>المبيعات بحسب المحطة (كل الفترات)</span></h3>
       <table><tr><th>المحطة</th><th class="n">فواتير</th><th class="n">مبيعات</th></tr>
-      ${ks.sort().map(k=>`<tr><td>محطة ${esc(k)}</td><td class="n">${m[k].n}</td><td class="n">${usd(m[k].t)}</td></tr>`).join('')}</table></div>`:'';})()}
+      ${ks.sort().map(k=>`<tr><td>محطة ${esc(k)}</td><td class="n">${m[k].n}</td><td class="n">${money(m[k].t)}</td></tr>`).join('')}</table></div>`:'';})()}
     <div class="card">
       <h3><span>حصة المنظّم — تفصيل (كل الفترات)</span></h3>
       <table>
-        <tr><td>محقّقة فعلياً — حُسمت في التسويات المنفَّذة</td><td class="n"><b style="color:var(--green)">${usd(comReal)}</b></td></tr>
-        <tr><td>متوقّعة — من قسائم لم تُسوَّ بعد</td><td class="n">${usd(comPend)}</td></tr>
-        <tr><td><b>الإجمالي المتوقّع</b></td><td class="n"><b>${usd(comReal+comPend)}</b></td></tr>
+        <tr><td>محقّقة فعلياً — حُسمت في التسويات المنفَّذة</td><td class="n"><b style="color:var(--green)">${money(comReal)}</b></td></tr>
+        <tr><td>متوقّعة — من قسائم لم تُسوَّ بعد</td><td class="n">${money(comPend)}</td></tr>
+        <tr><td><b>الإجمالي المتوقّع</b></td><td class="n"><b>${money(comReal+comPend)}</b></td></tr>
       </table>
       <div class="mini" style="margin-top:8px">حصة المنظّم تُحسم من قيمة قسائم كل كشك عند التسوية — بالنسبة الافتراضية ${com}% أو بالنسبة الخاصة بكل صنف إن وُجدت. تصبح "محقّقة" لحظة تنفيذ التسوية مع الكشك.
       القسائم التي لا يستعملها الزبائن تبقى بكاملها للمنظّم ولا تظهر هنا.</div>
@@ -903,17 +921,17 @@ function renderReports(){
     <div class="card">
       <h3><span>الوضع المالي مع الأكشاك (كل الفترات)</span></h3>
       <table>
-        <tr><td>مدفوع للأكشاك حتى الآن</td><td class="n"><b>${usd(paidOut)}</b></td></tr>
-        <tr><td>ما زال مستحقاً للأكشاك</td><td class="n" style="${stillOut>0.005?'color:var(--red);font-weight:700':''}">${usd(stillOut)}</td></tr>
+        <tr><td>مدفوع للأكشاك حتى الآن</td><td class="n"><b>${money(paidOut)}</b></td></tr>
+        <tr><td>ما زال مستحقاً للأكشاك</td><td class="n" style="${stillOut>EPS()?'color:var(--red);font-weight:700':''}">${money(stillOut)}</td></tr>
         <tr><td>عدد التسويات المنفَّذة</td><td class="n">${S.settlements.length}</td></tr>
       </table>
-      ${unused.length?`<div class="warnbox" style="margin:10px 0 0">${unused.length} قسيمة مضى عليها 3 أيام ولم تُسوَّ (${usd(unused.reduce((a,v)=>a+v.total,0))}) — غالباً قسائم لم يستعملها الزبائن أو لم يُسلّمها الكشك بعد.</div>`:''}
+      ${unused.length?`<div class="warnbox" style="margin:10px 0 0">${unused.length} قسيمة مضى عليها 3 أيام ولم تُسوَّ (${money(unused.reduce((a,v)=>a+v.total,0))}) — غالباً قسائم لم يستعملها الزبائن أو لم يُسلّمها الكشك بعد.</div>`:''}
     </div>
 
     <div class="card">
       <h3><span>المبيعات بحسب الصنف</span></h3>
       <table><tr><th>الصنف</th><th>الكشك</th><th class="n">كمية</th><th class="n">مبلغ</th></tr>
-        ${prods.length?prods.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(kName(p.kiosk))}</td><td class="n">${p.q}</td><td class="n">${usd(p.sum)}</td></tr>`).join('')
+        ${prods.length?prods.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(kName(p.kiosk))}</td><td class="n">${p.q}</td><td class="n">${money(p.sum)}</td></tr>`).join('')
         :'<tr><td colspan="4" style="text-align:center;color:var(--mut)">لا مبيعات</td></tr>'}</table>
       <div class="row3" style="margin-top:10px">
         <button class="btn ghost sm" id="csvP">أصناف CSV</button>
@@ -931,7 +949,7 @@ function renderReports(){
           const exp=ss.reduce((a,x)=>a+x.paidUsd-x.change,0)+(sh.floatUsd||0);
           const diff=(sh.closedAt&&sh.countUsd!=null)?(sh.countUsd-exp):null;
           return `<tr><td>${fmtDT(sh.openedAt)}</td><td>${sh.closedAt?fmtDT(sh.closedAt):'<b style="color:var(--green)">مفتوحة</b>'}</td>
-            <td class="n">${usd(t)}</td><td class="n" style="color:${diff===null?'var(--mut)':(Math.abs(diff)<0.01?'var(--green)':'var(--red)')}">${diff===null?'—':usd(diff)}</td></tr>`;
+            <td class="n">${money(t)}</td><td class="n" style="color:${diff===null?'var(--mut)':(Math.abs(diff)<0.01?'var(--green)':'var(--red)')}">${diff===null?'—':usd(diff)}</td></tr>`;
         }).join('')}</table>
     </div>`;
   w.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{repScope=b.dataset.s;renderReports();});
@@ -939,7 +957,7 @@ function renderReports(){
     .concat(prods.map(p=>[p.name,kName(p.kiosk),p.q,p.sum.toFixed(2)])));
   $('#csvS').onclick=()=>dlCSV('فواتير.csv',[['رقم','التاريخ','المجموع','مقبوض $','مقبوض ل.ل.','الباقي $','القسائم']]
     .concat(sales.map(s=>[s.no,fmtDT(s.ts),s.total.toFixed(2),s.paidUsd,s.paidLbp,s.change.toFixed(2),s.vouchers.map(v=>v.no).join(' ')])));
-  $('#csvV').onclick=()=>dlCSV('قسائم.csv',[['رقم القسيمة','الكشك','القيمة','حصة المنظّم','للكشك','التاريخ','الحالة','رقم التسوية']]
+  $('#csvV').onclick=()=>dlCSV('قسائم.csv',[['رقم القسيمة','الكشك','القيمة ('+(BASE()==='lbp'?'ل.ل.':'$')+')','حصة المنظّم','للكشك','التاريخ','الحالة','رقم التسوية']]
     .concat(allVouchers().sort((a,b)=>a.no.localeCompare(b.no)).map(v=>{
       const st=v.settled?S.settlements.find(x=>x.id===v.settled):null, c=vCom(v);
       return [v.no,kName(v.kiosk),v.total.toFixed(2),c.toFixed(2),(v.total-c).toFixed(2),fmtDT(v.ts),vStatus(v).t,st?st.no:''];})));
@@ -970,11 +988,11 @@ function shiftDialog(){
   }else{
     const ss=S.sales.filter(x=>x.shift===sh.id);
     const t=ss.reduce((a,x)=>a+x.total,0);
-    const expU=ss.reduce((a,x)=>a+x.paidUsd-x.change,0)+(sh.floatUsd||0);
-    const expL=ss.reduce((a,x)=>a+x.paidLbp,0)+(sh.floatLbp||0);
+    const expU=ss.reduce((a,x)=>a+x.paidUsd-(x.base==='lbp'?0:x.change),0)+(sh.floatUsd||0);
+    const expL=ss.reduce((a,x)=>a+x.paidLbp-(x.base==='lbp'?x.change:0),0)+(sh.floatLbp||0);
     sheet(`<h2>إقفال الوردية</h2>
       <div class="okbox">فُتحت: ${fmtDT(sh.openedAt)}${sh.who?' — '+esc(sh.who):''}<br>
-        عدد الفواتير: ${ss.length} · المبيعات: <b>${usd(t)}</b><br>
+        عدد الفواتير: ${ss.length} · المبيعات: <b>${money(t)}</b><br>
         المتوقّع في الصندوق: <b>${usd(expU)}</b> و <b>${lbp(expL).toLocaleString('en-US')} ل.ل.</b></div>
       <div class="fld"><label>النقد المعدود بالدولار</label><input id="cu" class="num" type="number" step="0.5" placeholder="0"></div>
       <div class="fld"><label>النقد المعدود بالليرة</label><input id="cl" class="num" type="number" step="1000" placeholder="0"></div>
@@ -1002,9 +1020,13 @@ function renderSettings(){
       <div class="fld"><label>اسم الجهة المنظِّمة</label><input id="s_club" value="${esc(st.club)}"></div>
       <div class="fld"><label>اسم المناسبة</label><input id="s_event" value="${esc(st.event)}"></div>
       <div class="row2">
+        <div class="fld"><label>العملة الأساسية (بها تُدخَل الأسعار)</label>
+          <select id="s_base"><option value="lbp" ${BASE()==='lbp'?'selected':''}>الليرة اللبنانية — ل.ل.</option>
+          <option value="usd" ${BASE()==='usd'?'selected':''}>الدولار — $</option></select></div>
         <div class="fld"><label>سعر الصرف (ل.ل. لكل 1$)</label><input id="s_rate" class="num" type="number" step="500" value="${st.rate}"></div>
-        <div class="fld"><label>نسبة المنظّم %</label><input id="s_com" class="num" type="number" step="1" value="${st.commission}"></div>
       </div>
+      <div class="mini" style="margin:-4px 0 10px">كل الأسعار والتقارير والتسويات تُعرض بالعملة الأساسية. العملة الثانية تظهر بجانبها للمعلومات فقط.</div>
+      <div class="fld"><label>نسبة المنظّم %</label><input id="s_com" class="num" type="number" step="1" value="${st.commission}"></div>
       <div class="fld"><label>رمز المحطة (حرف واحد — يجب أن يختلف عن كل محطة أخرى)</label>
         <input id="s_stn" class="num" maxlength="2" value="${esc(STN())}"></div>
       <div class="mini" style="margin:-4px 0 10px">
@@ -1052,7 +1074,7 @@ function renderSettings(){
       <div class="row2" style="margin-top:10px"><input id="kn" placeholder="اسم كشك جديد"><button class="btn ghost" id="kadd">إضافة</button></div></div>
 
     <div class="card"><h3><span>الأصناف</span></h3><div class="list" id="plist"></div>
-      <div style="margin-top:10px"><div class="row2"><input id="pn" placeholder="اسم الصنف"><input id="pp" class="num" type="number" step="0.25" placeholder="السعر $"></div>
+      <div style="margin-top:10px"><div class="row2"><input id="pn" placeholder="اسم الصنف"><input id="pp" class="num" type="number" step="${STEP()}" placeholder="السعر ${BASE()==='lbp'?'ل.ل.':'$'}"></div>
       <div class="row2" style="margin-top:8px"><select id="pk">${S.kiosks.map(k=>`<option value="${k.id}">${esc(k.name)}</option>`).join('')}</select>
       <input id="pc" class="num" type="number" min="0" max="100" step="1" placeholder="نسبة % (فارغ = ${st.commission}%)"></div>
       <button class="btn ghost" id="padd" style="width:100%;margin-top:8px">إضافة</button></div></div>
@@ -1080,7 +1102,16 @@ function renderSettings(){
 
   $('#saveSet').onclick=()=>{
     st.club=$('#s_club').value.trim()||st.club; st.event=$('#s_event').value.trim();
-    st.rate=Number($('#s_rate').value)||st.rate; st.commission=Number($('#s_com').value)||0;
+    const oldR=RATE(), newR=Number($('#s_rate').value)||st.rate;
+    const oldB=BASE(), newB=$('#s_base').value==='lbp'?'lbp':'usd';
+    if(newB!==oldB){
+      if(S.sales.length){ alert('لا يمكن تغيير العملة الأساسية بعد تسجيل مبيعات.\nامسح البيانات أولاً (الإعدادات ← مسح الحركات) أو ابدأ بجهاز نظيف.'); return; }
+      const f = newB==='lbp' ? oldR : 1/oldR;
+      if(!confirm('تحويل أسعار كل الأصناف بسعر الصرف '+oldR.toLocaleString('en-US')+'؟\nمثال: سعر حالي 2 يصبح '+Math.round(2*f).toLocaleString('en-US')+'.')) return;
+      S.products.forEach(x=>{ x.price = newB==='lbp' ? Math.round(x.price*f/1000)*1000 : Math.round(x.price*f*100)/100; });
+      st.base=newB;
+    }
+    st.rate=newR; st.commission=Number($('#s_com').value)||0;
     const ns=$('#s_stn').value.trim().toUpperCase().slice(0,2)||'A';
     if(ns!==STN()&&S.sales.length&&!confirm('تغيير رمز المحطة بعد وجود مبيعات؟ القسائم القديمة تحتفظ برمزها.'))return;
     st.station=ns;
@@ -1129,7 +1160,7 @@ function renderSettings(){
   S.products.forEach(p=>{
     const d=el('div','it');
     const ov=!(p.com===undefined||p.com===null||p.com==='');
-    d.innerHTML=`<div class="g"><b>${esc(p.name)}</b> <span class="tag">${usd(p.price)}</span>${ov?` <span class="tag" style="background:var(--goldL);color:#6B5210">نسبة ${pCom(p)}%</span>`:''}<small>${esc(kName(p.kiosk))}${p.on===false?' — موقوف':''}</small></div>`;
+    d.innerHTML=`<div class="g"><b>${esc(p.name)}</b> <span class="tag">${moneyC(p.price)}</span>${ov?` <span class="tag" style="background:var(--goldL);color:#6B5210">نسبة ${pCom(p)}%</span>`:''}<small>${esc(kName(p.kiosk))}${p.on===false?' — موقوف':''}</small></div>`;
     const e=el('button','iconbtn','✎');e.onclick=()=>editProduct(p);
     const b=el('button','iconbtn d','✕');
     b.onclick=()=>{if(confirm('حذف '+p.name+'؟')){S.products=S.products.filter(x=>x.id!==p.id);save();renderSettings();renderGrid();}};
@@ -1175,7 +1206,7 @@ function editKiosk(k){
 function editProduct(p){
   sheet(`<h2>تعديل صنف</h2>
     <div class="fld"><label>الاسم</label><input id="en" value="${esc(p.name)}"></div>
-    <div class="fld"><label>السعر بالدولار</label><input id="ep" class="num" type="number" step="0.25" value="${p.price}"></div>
+    <div class="fld"><label>السعر ${BASE()==='lbp'?'بالليرة':'بالدولار'}</label><input id="ep" class="num" type="number" step="${STEP()}" value="${p.price}"></div>
     <div class="fld"><label>الكشك</label><select id="ek">${S.kiosks.map(k=>`<option value="${k.id}" ${k.id===p.kiosk?'selected':''}>${esc(k.name)}</option>`).join('')}</select></div>
     <div class="fld"><label>نسبة المنظّم لهذا الصنف %</label>
       <input id="ec" class="num" type="number" min="0" max="100" step="1" placeholder="اتركه فارغاً = الافتراضية ${defCom()}%" value="${(p.com===undefined||p.com===null||p.com==='')?'':p.com}"></div>
