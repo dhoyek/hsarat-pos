@@ -591,13 +591,20 @@ function payDialog(){
     const d=paid()-t,c=$('#chg');
     if(!pu.value&&!pl.value){c.textContent='الباقي: —';c.style.color='var(--mut)';return;}
     if(d<-EPS()){c.textContent='ناقص '+money(-d);c.style.color='var(--red)';}
+    else if(Math.abs(d)<EPS()){c.textContent='المبلغ مضبوط — لا باقي';c.style.color='var(--green)';}
     else{c.textContent='الباقي: '+money(d)+'  ·  '+alt(d);c.style.color='var(--green)';}
   }
   pu.oninput=upd;pl.oninput=upd;
+  // prefill the exact amount in the base currency — cashier just confirms,
+  // or types over it when the customer hands more
+  const main = BASE()==='lbp' ? pl : pu;
+  main.value = BASE()==='lbp' ? lbp(tL) : Math.round(tU*100)/100;
+  [pu,pl].forEach(x=>x.addEventListener('focus',()=>x.select()));
+  upd();
   $('#doPay').onclick=()=>{const d=paid()-t;
     if(d<-EPS()){alert('المبلغ المقبوض أقل من المطلوب.');return;}
     commitSale(Number(pu.value)||0,Number(pl.value)||0,d);};
-  setTimeout(()=>pu.focus(),80);
+  setTimeout(()=>{main.focus();main.select();},80);
 }
 function commitSale(pu,pl,change){
   const sh=openShift(); S.seq++; const st=STN();
