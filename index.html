@@ -152,7 +152,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
   #printArea.w80 .vch table{font-size:22px}
   #printArea.w80 .vch table td.q{width:42px}
   #printArea.w80 .vch table td.a{width:86px}
-  #printArea.w80 .vch .tot{font-size:20px}
+  #printArea.w80 .vch .tot{font-size:17px}
   #printArea.w80 .vch .ft{font-size:13px}
   #printArea.w80 .vch .nl{font-size:13px}
   #printArea.w80 .vch .cut{font-size:14px}
@@ -168,7 +168,9 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
   .vch table td{border:none;padding:3px 0;text-align:right;line-height:1.35}
   .vch table td.q{text-align:center;width:30px;direction:ltr}
   .vch table td.a{text-align:left;width:62px;direction:ltr}
-  .vch .tot{font-size:15px;font-weight:800;direction:ltr}
+  .vch .tot{font-size:13px;font-weight:800;direction:rtl;unicode-bidi:isolate}
+  .vch .tot i{font-style:normal;display:inline-block;direction:ltr;unicode-bidi:isolate}
+  .vch .tot .sep{padding:0 3px}
   .vch .ft{font-size:10px;margin-top:4px}
   .vch .rp{font-weight:800;border:1px dashed #000;padding:2px 0;margin-top:5px}
   .vch .nl{font-size:10px;direction:ltr;word-break:break-all;line-height:1.6}
@@ -650,8 +652,8 @@ function vchHTML(v,sale,again){
     <div class="club">${esc(st.club)}</div><div class="ev">${esc(st.event)}</div><hr>
     <div class="kiosk">${esc(kName(v.kiosk))}</div>
     <div class="no">${v.no}</div><hr>
-    <table>${v.items.map(it=>`<tr><td class="q">${it.qty}×</td><td>${esc(it.name)}</td><td class="a">${moneyN(it.price*it.qty)}</td></tr>`).join('')}</table><hr>
-    <div class="tot">${money(v.total)}${st.showLbp?' · '+altAt(v.total,sale.rate):''}</div><hr>
+    <table>${v.items.map(it=>`<tr><td class="q">${it.qty}×</td><td>${esc(it.name)}</td><td class="a"><i style="font-style:normal;display:inline-block;direction:ltr;unicode-bidi:isolate">${moneyN(it.price*it.qty)}</i></td></tr>`).join('')}</table><hr>
+    <div class="tot"><i>${money(v.total)}</i>${st.showLbp?'<span class="sep">·</span><i>'+altAt(v.total,sale.rate)+'</i>':''}</div><hr>
     <div class="ft">فاتورة ${sale.no} · ${fmtDT(sale.ts)}</div>
     ${v.unit?`<div class="ft">وحدة ${v.unit[0]} من ${v.unit[1]}</div>`:''}
     ${again?'<div class="ft rp">إعادة طباعة — القسيمة نفسها، لا تُحتسب مرتين</div>':''}
@@ -896,8 +898,8 @@ function printSettlement(st){
       <tr><td>قيمة القسائم</td><td class="a">${money(st.gross)}</td></tr>
       <tr><td>حصة المنظّم (${st.comPct}%)</td><td class="a">-${money(st.com)}</td></tr>
     </table><hr>
-    <div class="tot" style="text-align:center">المدفوع: ${money(st.net)}</div>
-    <div style="text-align:center;font-size:11px">${alt(st.net)}</div><hr>
+    <div class="tot" style="text-align:center">المدفوع: <i>${money(st.net)}</i></div>
+    <div style="text-align:center;font-size:11px;direction:ltr;unicode-bidi:isolate">${alt(st.net)}</div><hr>
     <div class="ft" style="text-align:right">أرقام القسائم:</div>
     <div class="nl">${chunks.join(' ')}</div><hr>
     ${st.note?`<div class="ft" style="text-align:right">ملاحظة: ${esc(st.note)}</div><hr>`:''}
