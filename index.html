@@ -416,6 +416,11 @@ function vCom(v){
   return v.total*defCom()/100;
 }
 const sumCom=list=>list.reduce((a,v)=>a+vCom(v),0);
+// value of a sale after removing cancelled vouchers
+const netSale=s=>s.vouchers.reduce((a,v)=>a+(v.void?0:v.total),0);
+// value refunded / cancelled on a sale (money handed back to the customer)
+const voidSale=s=>s.vouchers.reduce((a,v)=>a+(v.void?v.total:0),0);
+const allVoided=s=>s.vouchers.length>0&&s.vouchers.every(v=>v.void);
 function vStatus(v){
   if(v.void) return {t:'ملغاة',c:'r'};
   if(v.settled) return {t:'مسوّاة',c:'g'};
@@ -686,7 +691,7 @@ function renderVouchers(){
   w.innerHTML=`${last?`<div class="card"><h3><span>إعادة الطباعة</span></h3>
       <div class="mini" style="margin-bottom:8px">إذا فشلت الطباعة أو انقطع الورق، أعد طباعة القسيمة — الرقم يبقى نفسه ولا تُحتسب مرتين في التسوية.</div>
       <button class="btn ghost" id="rpLast" style="width:100%;border-color:var(--green);color:var(--green)">
-        إعادة طباعة آخر فاتورة — ${esc(last.no)} · ${last.vouchers.length} قسيمة · ${money(last.total)}</button></div>`:''}
+        إعادة طباعة آخر فاتورة — ${esc(last.no)} · ${last.vouchers.length} قسيمة · ${money(netSale(last))}</button></div>`:''}
     <div class="card">
       <div class="fld" style="margin-bottom:8px"><input id="vq" class="num" placeholder="بحث برقم القسيمة" inputmode="numeric" value="${esc(vQuery)}"></div>
       <div class="chips" id="vchips">${F.map(f=>`<button data-f="${f[0]}" class="${vFilter===f[0]?'on':''}">${f[1]}</button>`).join('')}</div>
@@ -918,20 +923,25 @@ function scopeSales(){
 }
 function renderReports(){
   const w=$('#repWrap'), sales=scopeSales(), com=Number(S.settings.commission)||0;
-  const tot=sales.reduce((a,s)=>a+s.total,0);
+  const tot=sales.reduce((a,s)=>a+netSale(s),0);
+  const voided=sales.reduce((a,s)=>a+voidSale(s),0);
+  const nLive=sales.filter(s=>!allVoided(s)).length;
   const pu=sales.reduce((a,s)=>a+s.paidUsd,0);
   const pl=sales.reduce((a,s)=>a+s.paidLbp,0);
-  const chgU=sales.reduce((a,s)=>a+(s.base==='lbp'?0:s.change),0);
-  const chgL=sales.reduce((a,s)=>a+(s.base==='lbp'?s.change:0),0);
+  // change AND refunds of cancelled vouchers both leave the drawer, in the sale's base currency
+  const outU=sales.reduce((a,s)=>a+(s.base==='lbp'?0:s.change+voidSale(s)),0);
+  const outL=sales.reduce((a,s)=>a+(s.base==='lbp'?s.change+voidSale(s):0),0);
   const K={}; S.kiosks.forEach(k=>K[k.id]={n:0,sum:0,out:0,outSum:0,com:0});
   sales.forEach(s=>s.vouchers.forEach(v=>{
     if(v.void)return; if(!K[v.kiosk])K[v.kiosk]={n:0,sum:0,out:0,outSum:0,com:0};
     K[v.kiosk].n++;K[v.kiosk].sum+=v.total;K[v.kiosk].com+=vCom(v);
     if(!v.settled){K[v.kiosk].out++;K[v.kiosk].outSum+=v.total;}
   }));
-  const P={}; sales.forEach(s=>s.lines.forEach(l=>{
-    P[l.id]=P[l.id]||{name:l.name,kiosk:l.kiosk,q:0,sum:0};
-    P[l.id].q+=l.qty;P[l.id].sum+=l.price*l.qty;}));
+  // product breakdown from live vouchers only, so cancelled items disappear too
+  const P={}; sales.forEach(s=>s.vouchers.forEach(v=>{ if(v.void)return;
+    v.items.forEach(l=>{ const id=l.id||l.name;
+      P[id]=P[id]||{name:l.name,kiosk:l.kiosk||v.kiosk,q:0,sum:0};
+      P[id].q+=l.qty;P[id].sum+=l.price*l.qty;});}));
   const prods=Object.values(P).sort((a,b)=>b.sum-a.sum);
   const paidOut=S.settlements.reduce((a,s)=>a+s.net,0);
   const allOut=S.kiosks.reduce((a,k)=>a.concat(outstanding(k.id)),[]);
@@ -951,13 +961,14 @@ function renderReports(){
     </div></div>
     <div class="kpis">
       <div class="kpi"><div class="v">${money(tot)}</div><div class="l">مجموع المبيعات</div></div>
-      <div class="kpi"><div class="v">${sales.length}</div><div class="l">عدد الفواتير</div></div>
+      <div class="kpi"><div class="v">${nLive}</div><div class="l">عدد الفواتير</div></div>
       <div class="kpi"><div class="v">${usd(pu)}</div><div class="l">مقبوض دولار</div></div>
       <div class="kpi"><div class="v" style="font-size:16px">${lbp(pl).toLocaleString('en-US')}</div><div class="l">مقبوض ليرة</div></div>
       <div class="kpi" style="border-color:var(--green)"><div class="v" style="color:var(--green)">${money(comPeriod)}</div><div class="l">حصة المنظّم (هذه الفترة)</div></div>
     </div>
     <div class="okbox">النقد الذي يجب أن يكون في الصندوق عن هذه الفترة:
-      <b>${usd(pu-chgU)}</b> بالدولار و<b>${lbp(pl-chgL).toLocaleString('en-US')} ل.ل.</b> بالليرة.</div>
+      <b>${usd(pu-outU)}</b> بالدولار و<b>${lbp(pl-outL).toLocaleString('en-US')} ل.ل.</b> بالليرة.</div>
+    ${voided>EPS()?`<div class="warnbox">قسائم ملغاة في هذه الفترة بقيمة <b>${money(voided)}</b> — حُذفت من المبيعات ومن النقد المتوقّع في الصندوق (يُفترض أنّ المبلغ أُعيد للزبون).</div>`:''}
 
     <div class="card">
       <h3><span>الأكشاك — النسبة الافتراضية ${com}%</span></h3>
@@ -973,7 +984,7 @@ function renderReports(){
       عمود "للمنظّم" يحسب نسبة كل صنف على حدة إذا كانت له نسبة خاصة.</div>
     </div>
 
-    ${(()=>{const m={};S.sales.forEach(x=>{const k=x.stn||'—';m[k]=m[k]||{n:0,t:0};m[k].n++;m[k].t+=x.total;});
+    ${(()=>{const m={};S.sales.forEach(x=>{if(allVoided(x))return;const k=x.stn||'—';m[k]=m[k]||{n:0,t:0};m[k].n++;m[k].t+=netSale(x);});
       const ks=Object.keys(m); return ks.length>1?`<div class="card"><h3><span>المبيعات بحسب المحطة (كل الفترات)</span></h3>
       <table><tr><th>المحطة</th><th class="n">فواتير</th><th class="n">مبيعات</th></tr>
       ${ks.sort().map(k=>`<tr><td>محطة ${esc(k)}</td><td class="n">${m[k].n}</td><td class="n">${money(m[k].t)}</td></tr>`).join('')}</table></div>`:'';})()}
@@ -1015,8 +1026,8 @@ function renderReports(){
       <table><tr><th>فتحت</th><th>أُقفلت</th><th class="n">مبيعات</th><th class="n">فرق $</th></tr>
         ${S.shifts.slice().reverse().slice(0,12).map(sh=>{
           const ss=S.sales.filter(x=>x.shift===sh.id);
-          const t=ss.reduce((a,x)=>a+x.total,0);
-          const exp=ss.reduce((a,x)=>a+x.paidUsd-x.change,0)+(sh.floatUsd||0);
+          const t=ss.reduce((a,x)=>a+netSale(x),0);
+          const exp=ss.reduce((a,x)=>a+x.paidUsd-(x.base==='lbp'?0:x.change+voidSale(x)),0)+(sh.floatUsd||0);
           const diff=(sh.closedAt&&sh.countUsd!=null)?(sh.countUsd-exp):null;
           return `<tr><td>${fmtDT(sh.openedAt)}</td><td>${sh.closedAt?fmtDT(sh.closedAt):'<b style="color:var(--green)">مفتوحة</b>'}</td>
             <td class="n">${money(t)}</td><td class="n" style="color:${diff===null?'var(--mut)':(Math.abs(diff)<0.01?'var(--green)':'var(--red)')}">${diff===null?'—':usd(diff)}</td></tr>`;
@@ -1025,8 +1036,8 @@ function renderReports(){
   w.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{repScope=b.dataset.s;renderReports();});
   $('#csvP').onclick=()=>dlCSV('اصناف.csv',[['الصنف','الكشك','الكمية','المبلغ']]
     .concat(prods.map(p=>[p.name,kName(p.kiosk),p.q,p.sum.toFixed(2)])));
-  $('#csvS').onclick=()=>dlCSV('فواتير.csv',[['رقم','التاريخ','المجموع','مقبوض $','مقبوض ل.ل.','الباقي $','القسائم']]
-    .concat(sales.map(s=>[s.no,fmtDT(s.ts),s.total.toFixed(2),s.paidUsd,s.paidLbp,s.change.toFixed(2),s.vouchers.map(v=>v.no).join(' ')])));
+  $('#csvS').onclick=()=>dlCSV('فواتير.csv',[['رقم','التاريخ','الصافي','ملغى','مقبوض $','مقبوض ل.ل.','الباقي','القسائم']]
+    .concat(sales.map(s=>[s.no,fmtDT(s.ts),netSale(s).toFixed(2),voidSale(s).toFixed(2),s.paidUsd,s.paidLbp,s.change.toFixed(2),s.vouchers.map(v=>v.no).join(' ')])));
   $('#csvV').onclick=()=>dlCSV('قسائم.csv',[['رقم القسيمة','الكشك','القيمة ('+(BASE()==='lbp'?'ل.ل.':'$')+')','حصة المنظّم','للكشك','التاريخ','الحالة','رقم التسوية']]
     .concat(allVouchers().sort((a,b)=>a.no.localeCompare(b.no)).map(v=>{
       const st=v.settled?S.settlements.find(x=>x.id===v.settled):null, c=vCom(v);
@@ -1057,12 +1068,13 @@ function shiftDialog(){
       save();closeSheet();renderHeader();renderCart();};
   }else{
     const ss=S.sales.filter(x=>x.shift===sh.id);
-    const t=ss.reduce((a,x)=>a+x.total,0);
-    const expU=ss.reduce((a,x)=>a+x.paidUsd-(x.base==='lbp'?0:x.change),0)+(sh.floatUsd||0);
-    const expL=ss.reduce((a,x)=>a+x.paidLbp-(x.base==='lbp'?x.change:0),0)+(sh.floatLbp||0);
+    const t=ss.reduce((a,x)=>a+netSale(x),0);
+    const vd=ss.reduce((a,x)=>a+voidSale(x),0);
+    const expU=ss.reduce((a,x)=>a+x.paidUsd-(x.base==='lbp'?0:x.change+voidSale(x)),0)+(sh.floatUsd||0);
+    const expL=ss.reduce((a,x)=>a+x.paidLbp-(x.base==='lbp'?x.change+voidSale(x):0),0)+(sh.floatLbp||0);
     sheet(`<h2>إقفال الوردية</h2>
       <div class="okbox">فُتحت: ${fmtDT(sh.openedAt)}${sh.who?' — '+esc(sh.who):''}<br>
-        عدد الفواتير: ${ss.length} · المبيعات: <b>${money(t)}</b><br>
+        عدد الفواتير: ${ss.filter(x=>!allVoided(x)).length} · المبيعات: <b>${money(t)}</b>${vd>EPS()?` · ملغى: <b style="color:var(--red)">${money(vd)}</b>`:''}<br>
         المتوقّع في الصندوق: <b>${usd(expU)}</b> و <b>${lbp(expL).toLocaleString('en-US')} ل.ل.</b></div>
       <div class="fld"><label>النقد المعدود بالدولار</label><input id="cu" class="num" type="number" step="0.5" placeholder="0"></div>
       <div class="fld"><label>النقد المعدود بالليرة</label><input id="cl" class="num" type="number" step="1000" placeholder="0"></div>
