@@ -236,7 +236,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
    البيانات تُحفظ في المتصفح فور كل عملية.
    =============================================================== */
 const KEY='hsarat_pos_v2', CKEY=KEY+'_cart', BKEY=KEY+'_bak', RKEY=KEY+'_restore';
-const APPV='17';
+const APPV='18';
 let STORAGE_OK=true, MEM=null;
 
 const DEFAULTS=()=>({
@@ -1102,20 +1102,41 @@ function shiftDialog(){
     const ss=S.sales.filter(x=>x.shift===sh.id);
     const t=ss.reduce((a,x)=>a+netSale(x),0);
     const vd=ss.reduce((a,x)=>a+voidSale(x),0);
-    const expU=ss.reduce((a,x)=>a+x.paidUsd-(x.base==='lbp'?0:x.change+voidSale(x)),0)+(sh.floatUsd||0);
-    const expL=ss.reduce((a,x)=>a+x.paidLbp-(x.base==='lbp'?x.change+voidSale(x):0),0)+(sh.floatLbp||0);
+    const inU=ss.reduce((a,x)=>a+x.paidUsd,0), inL=ss.reduce((a,x)=>a+x.paidLbp,0);
+    const chU=ss.reduce((a,x)=>a+(x.base==='lbp'?0:x.change),0);
+    const chL=ss.reduce((a,x)=>a+(x.base==='lbp'?x.change:0),0);
+    const rfU=ss.reduce((a,x)=>a+(x.base==='lbp'?0:voidSale(x)),0);
+    const rfL=ss.reduce((a,x)=>a+(x.base==='lbp'?voidSale(x):0),0);
+    const fU=sh.floatUsd||0, fL=sh.floatLbp||0;
+    const expU=inU-chU-rfU+fU;
+    const expL=inL-chL-rfL+fL;
+    const L=n=>lbp(n).toLocaleString('en-US');
     sheet(`<h2>إقفال الوردية</h2>
       <div class="okbox">فُتحت: ${fmtDT(sh.openedAt)}${sh.who?' — '+esc(sh.who):''}<br>
-        عدد الفواتير: ${ss.filter(x=>!allVoided(x)).length} · المبيعات: <b>${money(t)}</b>${vd>EPS()?` · ملغى: <b style="color:var(--red)">${money(vd)}</b>`:''}<br>
-        المتوقّع في الصندوق: <b>${usd(expU)}</b> و <b>${lbp(expL).toLocaleString('en-US')} ل.ل.</b></div>
+        عدد الفواتير: ${ss.filter(x=>!allVoided(x)).length} · المبيعات: <b>${money(t)}</b>${vd>EPS()?` · ملغى: <b style="color:var(--red)">${money(vd)}</b>`:''}</div>
+      <div class="card" style="padding:10px;margin-bottom:12px">
+        <table style="font-size:13px">
+          <tr><th>حساب المتوقّع في الصندوق</th><th class="n">دولار</th><th class="n">ليرة</th></tr>
+          <tr><td>الفراطة الافتتاحية</td><td class="n">${usd(fU)}</td><td class="n">${L(fL)}</td></tr>
+          <tr><td>+ المقبوض من الزبائن</td><td class="n">${usd(inU)}</td><td class="n">${L(inL)}</td></tr>
+          <tr><td>− الباقي المُعاد</td><td class="n">${usd(chU)}</td><td class="n">${L(chL)}</td></tr>
+          ${(rfU>0.005||rfL>500)?`<tr><td>− قسائم ملغاة (مردودة للزبون)</td><td class="n" style="color:var(--red)">${usd(rfU)}</td><td class="n" style="color:var(--red)">${L(rfL)}</td></tr>`:''}
+          <tr><td><b>= المتوقّع</b></td><td class="n"><b>${usd(expU)}</b></td><td class="n"><b>${L(expL)}</b></td></tr>
+        </table>
+        <div class="mini" style="margin-top:8px">إن زاد النقد عن المتوقّع، الأسباب المعتادة: فراطة افتتاحية لم تُسجَّل · قسيمة أُلغيت ولم يُردّ مبلغها · الزبون دفع أكثر ولم يُعدَّل الحقل · نقد وردية سابقة لم يُسحب.</div>
+      </div>
       <div class="fld"><label>النقد المعدود بالدولار</label><input id="cu" class="num" type="number" step="0.5" placeholder="0"></div>
       <div class="fld"><label>النقد المعدود بالليرة</label><input id="cl" class="num" type="number" step="1000" placeholder="0"></div>
       <div class="big" id="df">الفرق: —</div>
       <div style="display:flex;gap:8px"><button class="btn ghost" onclick="closeSheet()">لاحقاً</button>
       <button class="btn main" id="ok">إقفال</button></div>`);
     const upd=()=>{const du=(Number($('#cu').value)||0)-expU,dv=(Number($('#cl').value)||0)-expL,e=$('#df');
-      e.innerHTML='الفرق: '+usd(du)+' · '+lbp(dv).toLocaleString('en-US')+' ل.ل.';
-      e.style.color=(Math.abs(du)<0.01&&Math.abs(dv)<1000)?'var(--green)':'var(--red)';};
+      const ok=(Math.abs(du)<0.01&&Math.abs(dv)<1000);
+      const more=(du>0.01||dv>1000), less=(du<-0.01||dv<-1000);
+      e.innerHTML='الفرق: '+usd(du)+' · '+lbp(dv).toLocaleString('en-US')+' ل.ل.'
+        +(ok?'<div style="font-size:13px;font-weight:600">مطابق</div>'
+            :`<div style="font-size:13px;font-weight:600">${more&&!less?'زيادة في الصندوق':(less&&!more?'نقص في الصندوق':'زيادة بعملة ونقص بأخرى — غالباً أُعطي الباقي بعملة غير المسجّلة')}</div>`);
+      e.style.color=ok?'var(--green)':'var(--red)';};
     $('#cu').oninput=upd;$('#cl').oninput=upd;
     $('#ok').onclick=()=>{sh.closedAt=nowISO();sh.countUsd=Number($('#cu').value)||0;
       sh.countLbp=Number($('#cl').value)||0;save();closeSheet();renderHeader();renderCart();
