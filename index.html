@@ -236,7 +236,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
    البيانات تُحفظ في المتصفح فور كل عملية.
    =============================================================== */
 const KEY='hsarat_pos_v2', CKEY=KEY+'_cart', BKEY=KEY+'_bak', RKEY=KEY+'_restore';
-const APPV='18';
+const APPV='19';
 let STORAGE_OK=true, MEM=null;
 
 const DEFAULTS=()=>({
@@ -491,7 +491,7 @@ function askCode(o){
     <div class="big" id="pmsg" style="font-size:14px;padding:0 0 8px;color:var(--red)"></div>
     <div class="pad" id="pad"></div>
     <div style="margin-top:12px"><button class="btn ghost" style="width:100%" onclick="closeSheet()">إلغاء</button></div>
-    ${o.recovery?'<div class="mini" style="text-align:center;margin-top:10px">نسيت الرمز؟ اكتب كلمة <b>حصارات</b> في مكان الأرقام عبر لوحة المفاتيح.</div>'
+    ${o.recovery?''
       :'<div class="mini" style="text-align:center;margin-top:10px">إن نُسي هذا الرمز، يغيّره الإداري من الإعدادات.</div>'}`);
   const pad=$('#pad');
   const draw=()=>{ document.querySelectorAll('#pb i').forEach((e,i)=>e.className=i<buf.length?'f':''); };
@@ -512,8 +512,8 @@ function askCode(o){
   document.addEventListener('keydown',kh);
   let word='', wh=null;
   if(o.recovery){
-    wh=e=>{ if(e.key.length===1&&/[\u0600-\u06FF]/.test(e.key)){ word=(word+e.key).slice(-6);
-      if(word==='حصارات'){ done(); alert('فُتح الوضع الإداري. يُستحسن تغيير الرمز من الإعدادات.'); } } };
+    wh=e=>{ if(e.key.length===1&&/[A-Za-z]/.test(e.key)){ word=(word+e.key).slice(-6).toLowerCase();
+      if(word==='hsarat'){ done(); alert('فُتح الوضع الإداري. يُستحسن تغيير الرمز من الإعدادات.'); } } };
     document.addEventListener('keydown',wh);
   }
   const mo=new MutationObserver(()=>{ if(!$('#mask').classList.contains('on')){
