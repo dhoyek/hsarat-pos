@@ -235,7 +235,8 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
    قسائم لكل كشك + تسوية مالية عبر أيام متتالية.
    البيانات تُحفظ في المتصفح فور كل عملية.
    =============================================================== */
-const KEY='hsarat_pos_v2', CKEY=KEY+'_cart', BKEY=KEY+'_bak';
+const KEY='hsarat_pos_v2', CKEY=KEY+'_cart', BKEY=KEY+'_bak', RKEY=KEY+'_restore';
+const APPV='17';
 let STORAGE_OK=true, MEM=null;
 
 const DEFAULTS=()=>({
@@ -337,11 +338,16 @@ function load(){
     alert('تعذّرت قراءة البيانات الأساسية، تمّ الرجوع إلى آخر نسخة داخلية سليمة.');
   }
   const d=DEFAULTS();
+  // a saved file from a build older than the currency layer had NO base field and was always USD.
+  // read it BEFORE the defaults fill, otherwise it inherits the new lira default and every
+  // stored price gets reinterpreted (a $4 item would read as 4 ل.ل.).
+  const legacyUsd = !!(raw && S.settings && S.settings.base===undefined);
   for(const k in d) if(S[k]===undefined) S[k]=d[k];
   for(const k in d.settings) if(S.settings[k]===undefined) S.settings[k]=d.settings[k];
+  if(legacyUsd) S.settings.base='usd';
   S.sales.forEach(s=>s.vouchers.forEach(v=>{ if(v.settled===undefined) v.settled=null; }));
   if(S.settings.footer==='تُسلَّم هذه القسيمة للكشك — لا تُستبدل بنقد') S.settings.footer='';
-  if(S.settings.base!=='lbp') S.settings.base='usd';
+  if(S.settings.base!=='lbp'&&S.settings.base!=='usd') S.settings.base='usd';
   S.kiosks.forEach(k=>{ if(k.split===undefined) k.split=false; });
   try{ const c=localStorage.getItem(CKEY); if(c) cart=JSON.parse(c)||[]; }catch(e){}
 }
@@ -356,6 +362,32 @@ function save(){
     alert('تعذّر الحفظ — الذاكرة ممتلئة أو المتصفح يمنع التخزين. احفظ نسخة احتياطية فوراً من الإعدادات.'); }
 }
 function saveCart(){ if(STORAGE_OK) try{ localStorage.setItem(CKEY,JSON.stringify(cart)); }catch(e){} }
+/* ---- restore point: taken ONLY before a destructive action, and never
+       overwritten by normal saves, so it survives days of later use ---- */
+function snapshotBefore(reason){
+  if(!STORAGE_OK) return;
+  try{
+    const cur=localStorage.getItem(KEY); if(!cur) return;
+    let n=0; try{ const o=JSON.parse(cur); n=(o.sales||[]).length; }catch(_){}
+    localStorage.setItem(RKEY,JSON.stringify({ts:nowISO(),reason,sales:n,data:cur}));
+  }catch(e){}
+}
+function getRestorePoint(){
+  if(!STORAGE_OK) return null;
+  try{ const r=localStorage.getItem(RKEY); return r?JSON.parse(r):null; }catch(e){ return null; }
+}
+function undoRestore(){
+  const rp=getRestorePoint(); if(!rp){alert('لا توجد نقطة استرجاع.');return;}
+  if(!confirm('استعادة البيانات التي كانت قبل '+rp.reason+' بتاريخ '+fmtDT(rp.ts)+'؟\n'
+    +'(فيها '+rp.sales+' فاتورة)\n\nالبيانات الحالية سيتم استبدالها — لكنها ستُحفظ كنقطة استرجاع جديدة.')) return;
+  try{
+    const cur=localStorage.getItem(KEY);
+    localStorage.setItem(KEY,rp.data);
+    let n=0; try{ const o=JSON.parse(cur); n=(o.sales||[]).length; }catch(_){}
+    localStorage.setItem(RKEY,JSON.stringify({ts:nowISO(),reason:'التراجع',sales:n,data:cur}));
+    location.reload();
+  }catch(e){ alert('تعذّرت الاستعادة.'); }
+}
 
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);
@@ -1164,11 +1196,17 @@ function renderSettings(){
     <div class="card"><h3><span>البيانات والحفظ</span></h3>
       <div class="mini" style="margin-bottom:10px">
         الفواتير: <b>${S.sales.length}</b> · القسائم: <b>${allVouchers().length}</b> · التسويات: <b>${S.settlements.length}</b> · الورديات: <b>${S.shifts.length}</b><br>
-        حالة التخزين: <b style="color:${STORAGE_OK?'var(--green)':'var(--red)'}">${STORAGE_OK?'يعمل — يُحفظ فور كل عملية':'معطّل'}</b>
+        حالة التخزين: <b style="color:${STORAGE_OK?'var(--green)':'var(--red)'}">${STORAGE_OK?'يعمل — يُحفظ فور كل عملية':'معطّل'}</b><br>
+        نسخة التطبيق: <b style="direction:ltr;display:inline-block">v${APPV}</b> · المحطة: <b>${esc(STN())}</b> · العملة: <b>${BASE()==='lbp'?'ل.ل.':'$'}</b>
       </div>
       <div class="row2"><button class="btn ghost" id="exp">حفظ نسخة احتياطية</button><button class="btn ghost" id="imp">استرجاع نسخة (استبدال)</button></div>
       <button class="btn ghost" id="mrg" style="width:100%;margin-top:8px;border-color:var(--green);color:var(--green)">دمج مبيعات محطة أخرى</button>
       <div class="mini" style="margin-top:6px">الدمج يُضيف مبيعات المحطة الأخرى إلى هذا الجهاز بلا حذف شيء، ولا يكرّر ما سبق دمجه. استعمله على جهاز الإدارة قبل التسوية.</div>
+      ${(()=>{const rp=getRestorePoint(); return rp?`<div class="warnbox" style="margin:10px 0 0">
+        <b>نقطة استرجاع محفوظة</b> — البيانات التي كانت قبل ${esc(rp.reason)} بتاريخ ${fmtDT(rp.ts)}
+        (${rp.sales} فاتورة). تُستعمل إن حصل استبدال بالخطأ.
+        <button class="btn ghost" id="undoR" style="width:100%;margin-top:8px;border-color:var(--red);color:var(--red)">↺ التراجع — استعادة البيانات السابقة</button>
+        </div>`:'';})()}
       <input type="file" id="impf" accept=".json" style="display:none">
       <input type="file" id="mrgf" accept=".json" style="display:none">
       <button class="btn ghost" id="tst" style="width:100%;margin-top:8px">طباعة تجريبية</button>
@@ -1254,11 +1292,19 @@ function renderSettings(){
       com:cv===''?null:Math.max(0,Math.min(100,Number(cv)||0))});
     save();renderSettings();renderGrid();};
 
+  if($('#undoR')) $('#undoR').onclick=undoRestore;
   $('#exp').onclick=exportJSON;
   $('#imp').onclick=()=>$('#impf').click();
   $('#impf').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
     r.onload=()=>{try{const o=JSON.parse(r.result);if(!o.settings||!o.products)throw 0;
-      if(confirm('استبدال كل البيانات الحالية بالنسخة المسترجعة؟')){S=o;save();location.reload();}}
+      const inS=(o.sales||[]).length, inStn=String((o.settings||{}).station||'?').toUpperCase();
+      if(!confirm('⚠️ استبدال — وليس دمجاً.\n\nسيُمحى كل ما على هذا الجهاز:\n'
+        +'• '+S.sales.length+' فاتورة · '+allVouchers().length+' قسيمة · '+S.settlements.length+' تسوية\n\n'
+        +'ويحلّ محلّه الملف: '+inS+' فاتورة · محطة '+inStn+'\n\n'
+        +'إن كان قصدك ضمّ مبيعات محطة أخرى، اضغط إلغاء واستعمل «دمج مبيعات محطة أخرى».\n\n'
+        +'متابعة الاستبدال؟')) { e.target.value=''; return; }
+      snapshotBefore('الاستبدال');
+      S=o;save();location.reload();}
       catch(_){alert('ملف غير صالح.');}};r.readAsText(f);};
   $('#mrg').onclick=()=>$('#mrgf').click();
   $('#mrgf').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
@@ -1270,6 +1316,7 @@ function renderSettings(){
   $('#wipe').onclick=()=>{
     if(!confirm('سيتم مسح كل الفواتير والقسائم والتسويات والورديات.\nالأصناف والأكشاك تبقى. متابعة؟'))return;
     if(!confirm('تأكيد نهائي — احفظ نسخة احتياطية أولاً إن أردت.'))return;
+    snapshotBefore('مسح الحركات');
     S.sales=[];S.shifts=[];S.settlements=[];S.seq=1000;S.vseq=1;S.sseq=0;
     save();renderSettings();renderHeader();};
 }
