@@ -245,7 +245,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
    البيانات تُحفظ في المتصفح فور كل عملية.
    =============================================================== */
 const KEY='hsarat_pos_v2', CKEY=KEY+'_cart', BKEY=KEY+'_bak', RKEY=KEY+'_restore', AKEY=KEY+'_auto';
-const APPV='21';
+const APPV='23';
 let STORAGE_OK=true, MEM=null;
 
 const DEFAULTS=()=>({
@@ -253,78 +253,76 @@ const DEFAULTS=()=>({
     rate:89500,commission:20,showLbp:true,base:'lbp',
     footer:'',lastBackup:null,pin:'',voidPin:'',mgrPin:'',station:'A',feed:3,cutMark:true,paper:58,showExpected:true},
   kiosks:[
-    {id:'k_shawarma',name:'شاورما',split:true},
-    {id:'k_bouza',name:'بوظة',split:true},
-    {id:'k_argile',name:'أراكيل',split:true},
-    {id:'k_batata',name:'بطاطا وبوشار',split:true},
-    {id:'k_mashawi',name:'مشاوي',split:true},
-    {id:'k_burger',name:'برغر وطاووق',split:true},
-    {id:'k_waffle',name:'وافل وكريب',split:true},
-    {id:'k_hotdog',name:'هوت دوغ',split:true},
-    {id:'k_manakish',name:'مناقيش',split:true},
-    {id:'k_dekkan',name:'دكان',split:false}],
+    {id:'k_coffee',name:'قهوة ومشروبات ساخنة',split:false,ord:0},
+    {id:'k_hotdog',name:'هوت دوغ',split:false,ord:1},
+    {id:'k_crepe',name:'كريب',split:false,ord:2},
+    {id:'k_burger',name:'برغر وطاووق',split:false,ord:3},
+    {id:'k_manakish',name:'مناقيش',split:false,ord:4},
+    {id:'k_waffle',name:'وافل',split:false,ord:5},
+    {id:'k_batata',name:'بطاطا وبوشار',split:false,ord:6},
+    {id:'k_argile',name:'أراكيل',split:false,ord:7},
+    {id:'k_rassour',name:'راسور باسور',split:false,ord:8},
+    {id:'k_dekkan',name:'دكان',split:false,ord:9}],
   products:[
-    {id:'p01',name:'شاورما دجاج',price:450000,kiosk:'k_shawarma',on:true,com:null},
-    {id:'p02',name:'شاورما لحمة',price:500000,kiosk:'k_shawarma',on:true,com:null},
-    {id:'p03',name:'بوظة كبيرة',price:200000,kiosk:'k_bouza',on:true,com:null},
-    {id:'p04',name:'بوظة',price:150000,kiosk:'k_bouza',on:true,com:null},
-    {id:'p05',name:'أركيلة تفاح',price:800000,kiosk:'k_argile',on:true,com:null},
-    {id:'p06',name:'أركيلة حامض ونعناع',price:800000,kiosk:'k_argile',on:true,com:null},
-    {id:'p07',name:'بطاطا',price:300000,kiosk:'k_batata',on:true,com:null},
-    {id:'p08',name:'بوشار',price:200000,kiosk:'k_batata',on:true,com:null},
-    {id:'p09',name:'غزل البنات',price:150000,kiosk:'k_batata',on:true,com:null},
-    {id:'p10',name:'فريز',price:150000,kiosk:'k_batata',on:true,com:null},
-    {id:'p11',name:'شاورما دجاج',price:500000,kiosk:'k_mashawi',on:true,com:null},
-    {id:'p12',name:'صحن شاورما',price:1000000,kiosk:'k_mashawi',on:true,com:null},
-    {id:'p13',name:'سندويش مشاوي',price:250000,kiosk:'k_mashawi',on:true,com:null},
-    {id:'p14',name:'صحن مشاوي',price:1000000,kiosk:'k_mashawi',on:true,com:null},
-    {id:'p15',name:'بطاطا',price:300000,kiosk:'k_mashawi',on:true,com:null},
-    {id:'p16',name:'فريز',price:150000,kiosk:'k_mashawi',on:true,com:null},
-    {id:'p17',name:'توم',price:50000,kiosk:'k_mashawi',on:true,com:null},
-    {id:'p18',name:'طاووق',price:600000,kiosk:'k_burger',on:true,com:null},
-    {id:'p19',name:'Lebanese Burger',price:650000,kiosk:'k_burger',on:true,com:null},
-    {id:'p20',name:'Fried Chicken Burger',price:800000,kiosk:'k_burger',on:true,com:null},
-    {id:'p21',name:'Grilled Chicken Burger',price:650000,kiosk:'k_burger',on:true,com:null},
-    {id:'p22',name:'صحن طاووق',price:1100000,kiosk:'k_burger',on:true,com:null},
-    {id:'p23',name:'إضافة جبنة شيدر',price:150000,kiosk:'k_burger',on:true,com:null},
-    {id:'p24',name:'وافل سادة',price:300000,kiosk:'k_waffle',on:true,com:null},
-    {id:'p25',name:'وافل إكسترا (صوصات)',price:300000,kiosk:'k_waffle',on:true,com:null},
-    {id:'p33',name:'كريب نوتيلا',price:350000,kiosk:'k_waffle',on:true,com:null},
-    {id:'p34',name:'كريب أوريو',price:400000,kiosk:'k_waffle',on:true,com:null},
-    {id:'p35',name:'كريب كيندر',price:450000,kiosk:'k_waffle',on:true,com:null},
-    {id:'p26',name:'American Hotdog',price:700000,kiosk:'k_hotdog',on:true,com:null},
-    {id:'p27',name:'Asian Hotdog',price:700000,kiosk:'k_hotdog',on:true,com:null},
-    {id:'p28',name:'German Hotdog',price:900000,kiosk:'k_hotdog',on:true,com:null},
-    {id:'p29',name:'Truffle Hotdog',price:800000,kiosk:'k_hotdog',on:true,com:null},
-    {id:'p30',name:'منقوشة زعتر',price:100000,kiosk:'k_manakish',on:true,com:null},
-    {id:'p31',name:'منقوشة جبنة وزعتر',price:150000,kiosk:'k_manakish',on:true,com:null},
-    {id:'p32',name:'منقوشة جبنة',price:200000,kiosk:'k_manakish',on:true,com:null},
-    {id:'p36',name:'ماء صغير',price:30000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p37',name:'ماء كبير',price:50000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p38',name:'Pepsi 1 Litre',price:200000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p39',name:'Pepsi Small',price:90000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p40',name:'Chips',price:70000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p41',name:'كستنيا أزرق',price:350000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p42',name:'كستنيا أخضر',price:400000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p43',name:'كستنيا موف',price:300000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p44',name:'بزورات',price:120000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p45',name:'دوار الشمس',price:130000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p46',name:'XXL',price:50000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p47',name:'XXL Tropic',price:90000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p48',name:'دارك بلو كبير',price:150000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p49',name:'فودكا',price:900000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p50',name:'مستر جوسي صغير',price:30000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p51',name:'مستر جوسي كبير',price:100000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p52',name:'Mogu Mogu',price:150000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p53',name:'Ice Tea',price:150000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p54',name:'بيروت بير',price:70000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p55',name:'معجنات',price:720000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p56',name:'ثلج',price:100000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p57',name:'صحون وشوك وأكواب (12)',price:150000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p58',name:'Clorets',price:40000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p59',name:'Wips',price:60000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p60',name:'مناديل كلينكس',price:30000,kiosk:'k_dekkan',on:true,com:100},
-    {id:'p61',name:'7 أكواب',price:50000,kiosk:'k_dekkan',on:true,com:100}],
+    {id:'p01',name:'قهوة + حلوى',price:70000,kiosk:'k_coffee',on:true,ord:0,com:null},
+    {id:'p02',name:'3 in 1',price:150000,kiosk:'k_coffee',on:true,ord:1,com:null},
+    {id:'p03',name:'Nescafe 3 in 1 + Nestle',price:250000,kiosk:'k_coffee',on:true,ord:2,com:null},
+    {id:'p04',name:'Cappuccino',price:200000,kiosk:'k_coffee',on:true,ord:3,com:null},
+    {id:'p05',name:'Hot Chocolate',price:200000,kiosk:'k_coffee',on:true,ord:4,com:null},
+    {id:'p06',name:'American Hotdog',price:700000,kiosk:'k_hotdog',on:true,ord:5,com:null},
+    {id:'p07',name:'Asian Hotdog',price:700000,kiosk:'k_hotdog',on:true,ord:6,com:null},
+    {id:'p08',name:'German Hotdog',price:700000,kiosk:'k_hotdog',on:true,ord:7,com:null},
+    {id:'p09',name:'Truffle Hotdog',price:800000,kiosk:'k_hotdog',on:true,ord:8,com:null},
+    {id:'p10',name:'كريب نوتيلا',price:350000,kiosk:'k_crepe',on:true,ord:9,com:null},
+    {id:'p11',name:'كريب أوريو',price:400000,kiosk:'k_crepe',on:true,ord:10,com:null},
+    {id:'p12',name:'كريب كيندر',price:450000,kiosk:'k_crepe',on:true,ord:11,com:null},
+    {id:'p13',name:'Taouk',price:600000,kiosk:'k_burger',on:true,ord:12,com:null},
+    {id:'p14',name:'Cheese Burger',price:650000,kiosk:'k_burger',on:true,ord:13,com:null},
+    {id:'p15',name:'Fried Chicken Burger',price:800000,kiosk:'k_burger',on:true,ord:14,com:null},
+    {id:'p16',name:'Grilled Chicken Burger',price:650000,kiosk:'k_burger',on:true,ord:15,com:null},
+    {id:'p17',name:'صحن طاووق',price:1100000,kiosk:'k_burger',on:true,ord:16,com:null},
+    {id:'p18',name:'إضافة جبنة شيدر',price:750000,kiosk:'k_burger',on:true,ord:17,com:null},
+    {id:'p19',name:'منقوشة زعتر',price:120000,kiosk:'k_manakish',on:true,ord:18,com:null},
+    {id:'p20',name:'منقوشة جبنة وزعتر',price:150000,kiosk:'k_manakish',on:true,ord:19,com:null},
+    {id:'p21',name:'منقوشة جبنة',price:200000,kiosk:'k_manakish',on:true,ord:20,com:null},
+    {id:'p22',name:'وافل سادة + إكسترا (صوصات)',price:300000,kiosk:'k_waffle',on:true,ord:21,com:null},
+    {id:'p23',name:'Layz Cake',price:100000,kiosk:'k_waffle',on:true,ord:22,com:null},
+    {id:'p24',name:'بطاطا',price:300000,kiosk:'k_batata',on:true,ord:23,com:null},
+    {id:'p25',name:'بوشار',price:200000,kiosk:'k_batata',on:true,ord:24,com:null},
+    {id:'p26',name:'غزل البنات',price:150000,kiosk:'k_batata',on:true,ord:25,com:null},
+    {id:'p27',name:'Frisco',price:150000,kiosk:'k_batata',on:true,ord:26,com:null},
+    {id:'p28',name:'أركيلة',price:800000,kiosk:'k_argile',on:true,ord:27,com:null},
+    {id:'p29',name:'Normal',price:150000,kiosk:'k_rassour',on:true,ord:28,com:null},
+    {id:'p30',name:'Spices',price:200000,kiosk:'k_rassour',on:true,ord:29,com:null},
+    {id:'p31',name:'Special',price:300000,kiosk:'k_rassour',on:true,ord:30,com:null},
+    {id:'p32',name:'Crunchy Hot Dog',price:350000,kiosk:'k_rassour',on:true,ord:31,com:null},
+    {id:'p33',name:'+ Extra Sauces',price:50000,kiosk:'k_rassour',on:true,ord:32,com:null},
+    {id:'p34',name:'ماء صغير',price:30000,kiosk:'k_dekkan',on:true,ord:33,com:100},
+    {id:'p35',name:'ماء كبير',price:50000,kiosk:'k_dekkan',on:true,ord:34,com:100},
+    {id:'p36',name:'Pepsi 1 Litre',price:200000,kiosk:'k_dekkan',on:true,ord:35,com:100},
+    {id:'p37',name:'Pepsi Small',price:90000,kiosk:'k_dekkan',on:true,ord:36,com:100},
+    {id:'p38',name:'Chips',price:70000,kiosk:'k_dekkan',on:true,ord:37,com:100},
+    {id:'p39',name:'كستنيا أزرق',price:350000,kiosk:'k_dekkan',on:true,ord:38,com:100},
+    {id:'p40',name:'كستنيا أخضر',price:400000,kiosk:'k_dekkan',on:true,ord:39,com:100},
+    {id:'p41',name:'كستنيا موف',price:300000,kiosk:'k_dekkan',on:true,ord:40,com:100},
+    {id:'p42',name:'بزورات',price:120000,kiosk:'k_dekkan',on:true,ord:41,com:100},
+    {id:'p43',name:'دوار الشمس',price:130000,kiosk:'k_dekkan',on:true,ord:42,com:100},
+    {id:'p44',name:'XXL',price:50000,kiosk:'k_dekkan',on:true,ord:43,com:100},
+    {id:'p45',name:'XXL Tropic',price:90000,kiosk:'k_dekkan',on:true,ord:44,com:100},
+    {id:'p46',name:'دارك بلو كبير',price:150000,kiosk:'k_dekkan',on:true,ord:45,com:100},
+    {id:'p47',name:'فودكا',price:900000,kiosk:'k_dekkan',on:true,ord:46,com:100},
+    {id:'p48',name:'مستر جوسي صغير',price:30000,kiosk:'k_dekkan',on:true,ord:47,com:100},
+    {id:'p49',name:'مستر جوسي كبير',price:100000,kiosk:'k_dekkan',on:true,ord:48,com:100},
+    {id:'p50',name:'Mogu Mogu',price:150000,kiosk:'k_dekkan',on:true,ord:49,com:100},
+    {id:'p51',name:'Ice Tea',price:150000,kiosk:'k_dekkan',on:true,ord:50,com:100},
+    {id:'p52',name:'بيروت بير',price:70000,kiosk:'k_dekkan',on:true,ord:51,com:100},
+    {id:'p53',name:'معجنات',price:720000,kiosk:'k_dekkan',on:true,ord:52,com:100},
+    {id:'p54',name:'ثلج',price:100000,kiosk:'k_dekkan',on:true,ord:53,com:100},
+    {id:'p55',name:'صحون وشوك وأكواب (12)',price:150000,kiosk:'k_dekkan',on:true,ord:54,com:100},
+    {id:'p56',name:'Clorets',price:40000,kiosk:'k_dekkan',on:true,ord:55,com:100},
+    {id:'p57',name:'Wips',price:60000,kiosk:'k_dekkan',on:true,ord:56,com:100},
+    {id:'p58',name:'مناديل كلينكس',price:30000,kiosk:'k_dekkan',on:true,ord:57,com:100},
+    {id:'p59',name:'7 أكواب',price:50000,kiosk:'k_dekkan',on:true,ord:58,com:100}],
   sales:[],shifts:[],settlements:[],seq:1000,vseq:1,sseq:0
 });
 let S=null, cart=[], filterK='all';
@@ -648,18 +646,20 @@ function renderGrid(){
     const list=prodsOf(k.id).filter(p=>reorderMode||p.on!==false);
     if(!list.length) return;
     any=true;
-    const head=el('div','ghead',esc(k.name)); g.appendChild(head);
-    const wrap=el('div','gwrap'); wrap.dataset.k=k.id;
+    // في وضع الترتيب فقط نعزل كل كشك في حاوية ليبقى السحب داخل الكشك نفسه
+    const wrap=reorderMode?el('div','gwrap'):g;
+    if(reorderMode){ wrap.dataset.k=k.id; g.appendChild(el('div','ghead',esc(k.name))); }
     list.forEach(p=>{
       const c=el('button','pcard'+(p.on===false?' off':''));
       c.dataset.p=p.id;
       c.innerHTML=`<div class="n">${esc(p.name)}</div><div class="p">${moneyC(p.price)}<span class="cu">${BASE()==='lbp'?'\u00A0ل.ل.':''}</span></div>`
+        +(filterK==='all'?`<div class="k">${esc(k.name)}</div>`:'')
         +(p.on===false?'<div class="k" style="color:var(--red)">موقوف</div>':'');
       if(reorderMode){ c.draggable=true; attachDrag(c,wrap,k.id); }
       else c.onclick=()=>{const f=cart.find(x=>x.id===p.id);if(f)f.qty++;else cart.push({id:p.id,name:p.name,price:p.price,kiosk:p.kiosk,qty:1});renderCart();};
       wrap.appendChild(c);
     });
-    g.appendChild(wrap);
+    if(reorderMode) g.appendChild(wrap);
   });
   if(!any) g.appendChild(el('div','empty','لا أصناف — أضفها من الإعدادات'));
   if(reorderMode) g.insertBefore(el('div','okbox gfull','وضع الترتيب: اسحب الصنف وأفلته في مكانه الجديد داخل الكشك نفسه. الترتيب يُحفظ تلقائياً. اضغط «⇅ ترتيب» للخروج.'),g.firstChild);
