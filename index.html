@@ -245,7 +245,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
    البيانات تُحفظ في المتصفح فور كل عملية.
    =============================================================== */
 const KEY='hsarat_pos_v2', CKEY=KEY+'_cart', BKEY=KEY+'_bak', RKEY=KEY+'_restore', AKEY=KEY+'_auto';
-const APPV='24';
+const APPV='26';
 let STORAGE_OK=true, MEM=null;
 
 const DEFAULTS=()=>({
@@ -1436,10 +1436,12 @@ function renderSettings(){
       <div class="mini" style="margin-bottom:10px">
         الفواتير: <b>${S.sales.length}</b> · القسائم: <b>${allVouchers().length}</b> · التسويات: <b>${S.settlements.length}</b> · الورديات: <b>${S.shifts.length}</b><br>
         حالة التخزين: <b style="color:${STORAGE_OK?'var(--green)':'var(--red)'}">${STORAGE_OK?'يعمل — يُحفظ فور كل عملية':'معطّل'}</b><br>
-        نسخة التطبيق: <b style="direction:ltr;display:inline-block">v${APPV}</b> · المحطة: <b>${esc(STN())}</b> · العملة: <b>${BASE()==='lbp'?'ل.ل.':'$'}</b>
+        نسخة التطبيق: <b style="direction:ltr;display:inline-block">v${APPV}</b> · المحطة: <b>${esc(STN())}</b> · العملة: <b>${BASE()==='lbp'?'ل.ل.':'$'}</b><br>
+        الاتصال: <b style="color:${navigator.onLine?'var(--green)':'var(--gold)'}">${navigator.onLine?'متصل بالإنترنت':'بلا إنترنت — التطبيق يعمل عادي والبيانات محفوظة'}</b>
       </div>
       <div class="row2"><button class="btn ghost" id="exp">حفظ نسخة احتياطية</button><button class="btn ghost" id="imp">استرجاع من ملف على القرص</button></div>
-      <button class="btn ghost" id="upd" style="width:100%;margin-top:8px">التحقّق من وجود نسخة جديدة</button>
+      <button class="btn ghost" id="upd" style="width:100%;margin-top:8px;border-color:var(--green);color:var(--green)">فرض تحميل أحدث نسخة</button>
+      <div class="mini" style="margin-top:6px">يمسح النسخة المخزّنة في المتصفح ويجلب أحدث نسخة من الرابط. <b>لا يمسّ بياناتك</b> (المبيعات والأصناف والإعدادات).</div>
       <button class="btn ghost" id="mrg" style="width:100%;margin-top:8px;border-color:var(--green);color:var(--green)">دمج مبيعات محطة أخرى</button>
       <div class="mini" style="margin-top:6px">الدمج يُضيف مبيعات المحطة الأخرى إلى هذا الجهاز بلا حذف شيء، ولا يكرّر ما سبق دمجه. استعمله على جهاز الإدارة قبل التسوية.</div>
       <div class="card" style="padding:10px;margin:12px 0 0;background:var(--bg)">
@@ -1586,7 +1588,7 @@ function renderSettings(){
   drawAuto();
   if($('#autoNow')) $('#autoNow').onclick=()=>{ autoBackup('يدوي',true)?drawAuto():alert('تعذّر أخذ النسخة — الذاكرة ممتلئة.'); };
   if($('#undoR')) $('#undoR').onclick=undoRestore;
-  if($('#upd')) $('#upd').onclick=()=>{ if(window.SWCHECK) window.SWCHECK(); else location.reload(true); };
+  if($('#upd')) $('#upd').onclick=()=>{ if(confirm('سيتم مسح النسخة المخزّنة وتحميل أحدث نسخة من الإنترنت.\nبياناتك لا تتأثر. متابعة؟')) window.FORCEUPDATE(); };
   $('#exp').onclick=exportJSON;
   $('#imp').onclick=()=>$('#impf').click();
   $('#impf').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
@@ -1683,22 +1685,47 @@ setTimeout(()=>{ const l=autoList();
   if(!l.length || (new Date()-new Date(l[0].ts))>=6*3600000) autoBackup('تلقائي — عند فتح التطبيق');
 },2000);
 window.closeSheet=closeSheet;
-if('serviceWorker' in navigator && location.protocol.startsWith('http')){
-  navigator.serviceWorker.register('sw.js').then(reg=>{
-    // ask the browser to look for a new version now, and again whenever the app is re-opened
+/* ---- always run the newest build ----
+   Any previously installed service worker is removed and every cache wiped,
+   so the page can never be served from a stale copy again. */
+async function purgeSW(manual){
+  let hadSW=false;
+  try{
+    if('serviceWorker' in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      hadSW=regs.length>0;
+      await Promise.all(regs.map(r=>r.unregister().catch(()=>{})));
+    }
+  }catch(_){}
+  let hadCache=false;
+  try{
+    if(window.caches){
+      const ks=await caches.keys();
+      hadCache=ks.length>0;
+      await Promise.all(ks.map(k=>caches.delete(k)));
+    }
+  }catch(_){}
+  return {hadSW,hadCache};
+}
+if(location.protocol.startsWith('http')){
+  navigator.serviceWorker && navigator.serviceWorker.register('sw.js').then(reg=>{
     const check=()=>{ try{ reg.update(); }catch(_){} };
     check();
     document.addEventListener('visibilitychange',()=>{ if(!document.hidden) check(); });
-    window.SWCHECK=()=>{ check(); setTimeout(()=>alert('جارٍ التحقّق… إن وُجدت نسخة جديدة سيُعاد تحميل التطبيق تلقائياً خلال ثوانٍ.'),50); };
   }).catch(()=>{});
-  // when a newer service worker takes over, reload once so the new page is shown
   let swReloaded=false;
-  navigator.serviceWorker.addEventListener('controllerchange',()=>{
-    if(swReloaded) return; swReloaded=true;
-    if(cart.length) return;              // never interrupt a sale in progress
-    location.reload();
+  navigator.serviceWorker && navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(swReloaded||cart.length) return;      // never interrupt a sale
+    swReloaded=true; location.reload();
   });
 }
+window.FORCEUPDATE=async ()=>{
+  await purgeSW(true);
+  alert('تم مسح النسخة المخزّنة.\nسيُعاد تحميل التطبيق الآن بأحدث نسخة من الإنترنت.');
+  location.replace(location.pathname+'?v='+Date.now());
+};
+// حالة الاتصال — تظهر في الإعدادات
+window.NETOK=()=>navigator.onLine;
 </script>
 </body>
 </html>
