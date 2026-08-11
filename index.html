@@ -245,7 +245,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
    البيانات تُحفظ في المتصفح فور كل عملية.
    =============================================================== */
 const KEY='hsarat_pos_v2', CKEY=KEY+'_cart', BKEY=KEY+'_bak', RKEY=KEY+'_restore', AKEY=KEY+'_auto';
-const APPV='23';
+const APPV='24';
 let STORAGE_OK=true, MEM=null;
 
 const DEFAULTS=()=>({
@@ -1439,6 +1439,7 @@ function renderSettings(){
         نسخة التطبيق: <b style="direction:ltr;display:inline-block">v${APPV}</b> · المحطة: <b>${esc(STN())}</b> · العملة: <b>${BASE()==='lbp'?'ل.ل.':'$'}</b>
       </div>
       <div class="row2"><button class="btn ghost" id="exp">حفظ نسخة احتياطية</button><button class="btn ghost" id="imp">استرجاع من ملف على القرص</button></div>
+      <button class="btn ghost" id="upd" style="width:100%;margin-top:8px">التحقّق من وجود نسخة جديدة</button>
       <button class="btn ghost" id="mrg" style="width:100%;margin-top:8px;border-color:var(--green);color:var(--green)">دمج مبيعات محطة أخرى</button>
       <div class="mini" style="margin-top:6px">الدمج يُضيف مبيعات المحطة الأخرى إلى هذا الجهاز بلا حذف شيء، ولا يكرّر ما سبق دمجه. استعمله على جهاز الإدارة قبل التسوية.</div>
       <div class="card" style="padding:10px;margin:12px 0 0;background:var(--bg)">
@@ -1585,6 +1586,7 @@ function renderSettings(){
   drawAuto();
   if($('#autoNow')) $('#autoNow').onclick=()=>{ autoBackup('يدوي',true)?drawAuto():alert('تعذّر أخذ النسخة — الذاكرة ممتلئة.'); };
   if($('#undoR')) $('#undoR').onclick=undoRestore;
+  if($('#upd')) $('#upd').onclick=()=>{ if(window.SWCHECK) window.SWCHECK(); else location.reload(true); };
   $('#exp').onclick=exportJSON;
   $('#imp').onclick=()=>$('#impf').click();
   $('#impf').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
@@ -1682,7 +1684,20 @@ setTimeout(()=>{ const l=autoList();
 },2000);
 window.closeSheet=closeSheet;
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
-  navigator.serviceWorker.register('sw.js').catch(()=>{});
+  navigator.serviceWorker.register('sw.js').then(reg=>{
+    // ask the browser to look for a new version now, and again whenever the app is re-opened
+    const check=()=>{ try{ reg.update(); }catch(_){} };
+    check();
+    document.addEventListener('visibilitychange',()=>{ if(!document.hidden) check(); });
+    window.SWCHECK=()=>{ check(); setTimeout(()=>alert('جارٍ التحقّق… إن وُجدت نسخة جديدة سيُعاد تحميل التطبيق تلقائياً خلال ثوانٍ.'),50); };
+  }).catch(()=>{});
+  // when a newer service worker takes over, reload once so the new page is shown
+  let swReloaded=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(swReloaded) return; swReloaded=true;
+    if(cart.length) return;              // never interrupt a sale in progress
+    location.reload();
+  });
 }
 </script>
 </body>
