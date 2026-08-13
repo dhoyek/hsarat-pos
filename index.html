@@ -40,8 +40,8 @@ main{flex:1;overflow:hidden;position:relative}
 .page.on{display:block}
 #sell{display:none;position:absolute;inset:0}
 #sell.on{display:flex;flex-direction:column}
-.kbar{display:flex;gap:6px;padding:8px;overflow-x:auto;background:#fff;border-bottom:1px solid var(--line);flex:none}
-.kbar button{white-space:nowrap;padding:8px 14px;border-radius:999px;font-size:14px;font-weight:600;background:var(--bg);color:var(--mut);border:1.5px solid var(--line)}
+.kbar{display:flex;flex-wrap:wrap;gap:5px;padding:7px 8px;background:#fff;border-bottom:1px solid var(--line);flex:none;max-height:33vh;overflow-y:auto}
+.kbar button{white-space:nowrap;padding:6px 11px;border-radius:999px;font-size:13px;font-weight:600;background:var(--bg);color:var(--mut);border:1.5px solid var(--line)}
 .kbar button.on{background:var(--green);color:#fff;border-color:var(--green)}
 .grid{flex:1;overflow:auto;padding:8px;display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));align-content:start}
 .pcard{background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:10px 6px;text-align:center;min-height:86px;display:flex;flex-direction:column;justify-content:center;gap:5px}
@@ -178,6 +178,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
   .vch table td.q{text-align:center;width:30px;direction:ltr}
   .vch table td.a{text-align:left;width:62px;direction:ltr}
   .vch .tot{font-size:13px;font-weight:800;direction:rtl;unicode-bidi:isolate}
+  .vch i{font-style:normal;display:inline-block;direction:ltr;unicode-bidi:isolate}
   .vch .tot i{font-style:normal;display:inline-block;direction:ltr;unicode-bidi:isolate}
   .vch .tot .sep{padding:0 3px}
   .vch .ft{font-size:10px;margin-top:4px}
@@ -245,7 +246,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
    البيانات تُحفظ في المتصفح فور كل عملية.
    =============================================================== */
 const KEY='hsarat_pos_v2', CKEY=KEY+'_cart', BKEY=KEY+'_bak', RKEY=KEY+'_restore', AKEY=KEY+'_auto';
-const APPV='26';
+const APPV='28';
 let STORAGE_OK=true, MEM=null;
 
 const DEFAULTS=()=>({
@@ -523,12 +524,12 @@ function applyLock(){
   const L=isLocked();
   PROT.forEach(t=>{
     const b=document.querySelector(`nav button[data-t="${t}"]`);
-    // مسؤول الأصناف يرى الإعدادات فقط؛ التسوية والتقارير لمسؤول النظام
-    const allow = !L && (t==='set' || isSys());
+    // مسؤول الأصناف يرى الإعدادات والتقارير؛ التسوية لمسؤول النظام
+    const allow = !L && (t==='set' || t==='rep' || isSys());
     if(b) b.style.display=allow?'':'none';
   });
   const cur=document.querySelector('nav button.on');
-  if(cur&&PROT.includes(cur.dataset.t)&&(L||(cur.dataset.t!=='set'&&!isSys())))
+  if(cur&&PROT.includes(cur.dataset.t)&&(L||(cur.dataset.t!=='set'&&cur.dataset.t!=='rep'&&!isSys())))
     document.querySelector('nav button[data-t="sell"]').click();
   if(reorderMode&&!canItems()) toggleReorder(false);
   const lp=$('#hLock');
@@ -1044,7 +1045,8 @@ function settleDialog(kid){
     if(!list.length){alert('لا قسائم مختارة.');return;}
     const g=list.reduce((a,v)=>a+v.total,0), c=sumCom(list);
     S.sseq++;
-    const st={id:uid('t'),no:'T'+String(S.sseq).padStart(3,'0'),kiosk:kid,ts:nowISO(),
+    // رقم التسوية يحمل رمز المحطة (TA001 / TB001) حتى لا يتكرّر عند دمج محطتين
+    const st={id:uid('t'),no:'T'+STN()+String(S.sseq).padStart(3,'0'),kiosk:kid,ts:nowISO(),
       nos:list.map(v=>v.no),gross:g,comPct:g>0?Math.round(c/g*1000)/10:com,com:c,net:g-c,
       by:$('#who').value.trim(),note:$('#note').value.trim(),mode};
     list.forEach(v=>{const f=findV(v.no); if(f)f.v.settled=st.id;});
@@ -1120,10 +1122,11 @@ function renderReports(){
 
   w.innerHTML=`
     <div class="card" style="padding:8px"><div class="row3">
-      <button class="btn ghost" data-s="today" style="${repScope==='today'?'background:var(--green);color:#fff;border-color:var(--green)':''}">اليوم</button>
+      <button class="btn ghost" data-s="today" style="${repScope==='today'?'background:var(--green);color:#fff;border-color:var(--green)':''}">اليوم ${fmtD(nowISO()).slice(0,5)}</button>
       <button class="btn ghost" data-s="shift" style="${repScope==='shift'?'background:var(--green);color:#fff;border-color:var(--green)':''}">الوردية</button>
       <button class="btn ghost" data-s="all" style="${repScope==='all'?'background:var(--green);color:#fff;border-color:var(--green)':''}">الكل</button>
     </div></div>
+    ${(repScope!=='all'&&!sales.length&&S.sales.length)?`<div class="warnbox">لا مبيعات في هذا النطاق (${repScope==='today'?'اليوم':'الوردية المفتوحة'}) — لكن على الجهاز <b>${S.sales.length}</b> فاتورة من فترات سابقة. اضغط <b>«الكل»</b> لعرضها.</div>`:''}
     <div class="kpis">
       <div class="kpi"><div class="v">${money(tot)}</div><div class="l">مجموع المبيعات</div></div>
       <div class="kpi"><div class="v">${nLive}</div><div class="l">عدد الفواتير</div></div>
@@ -1144,7 +1147,13 @@ function renderReports(){
           <td class="n" style="${d.out?'color:var(--red);font-weight:700':''}">${d.out}</td>
           <td class="n" style="color:var(--green)">${money(d.com)}</td>
           <td class="n"><b>${money(d.sum-d.com)}</b></td></tr>`;}).join('')}
+        ${(()=>{const T=Object.values(K).reduce((a,d)=>({n:a.n+d.n,sum:a.sum+d.sum,out:a.out+d.out,com:a.com+d.com}),{n:0,sum:0,out:0,com:0});
+          return `<tr style="background:var(--greenL);font-weight:800">
+            <td><b>الإجمالي</b></td><td class="n"><b>${T.n}</b></td><td class="n"><b>${money(T.sum)}</b></td>
+            <td class="n"><b>${T.out}</b></td><td class="n" style="color:var(--green)"><b>${money(T.com)}</b></td>
+            <td class="n"><b>${money(T.sum-T.com)}</b></td></tr>`;})()}
       </table>
+      <button class="btn ghost sm" id="prnK" style="width:100%;margin-top:10px;border-color:var(--green);color:var(--green)">🖨 طباعة جدول الأكشاك</button>
       <div class="mini" style="margin-top:8px">"معلّق" = قسائم هذه الفترة لم تُسوَّ بعد. التسوية تتمّ من تبويب التسوية.
       عمود "للمنظّم" يحسب نسبة كل صنف على حدة إذا كانت له نسبة خاصة.</div>
     </div>
@@ -1203,6 +1212,7 @@ function renderReports(){
         }).join('')}</table>
     </div>`;
   w.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{repScope=b.dataset.s;renderReports();});
+  if($('#prnK')) $('#prnK').onclick=()=>printKioskTable(K);
   $('#csvP').onclick=()=>dlCSV('اصناف.csv',[['الصنف','الكشك','الكمية','المبلغ']]
     .concat(prods.map(p=>[p.name,kName(p.kiosk),p.q,p.sum.toFixed(2)])));
   $('#csvS').onclick=()=>dlCSV('فواتير.csv',[['رقم','التاريخ','الصافي','ملغى','مقبوض $','مقبوض ل.ل.','الباقي','القسائم']]
@@ -1299,6 +1309,32 @@ function shiftDialog(){
 }
 
 const st_showExp=()=>S.settings.showExpected!==false;
+/* طباعة جدول الأكشاك على طابعة نقطة البيع — ثلاثة أعمدة فقط */
+function printKioskTable(K){
+  const s=S.settings, sc={today:'اليوم',shift:'الوردية',all:'كل الفترات'}[repScope]||'';
+  const rows=sortedKiosks().map(k=>({n:k.name,d:K[k.id]||{sum:0,com:0}}))
+    .filter(r=>r.d.sum>EPS()||r.d.com>EPS());
+  const T=rows.reduce((a,r)=>({sum:a.sum+r.d.sum,com:a.com+r.d.com}),{sum:0,com:0});
+  doPrint(`<div class="vch" style="text-align:right">
+    <div class="club" style="text-align:center">${esc(s.club)}</div>
+    <div class="ev" style="text-align:center">${esc(s.event)}</div><hr>
+    <div class="kiosk" style="text-align:center">حساب الأكشاك</div>
+    <div class="ft" style="text-align:center">${sc} · ${fmtDT(nowISO())} · محطة ${esc(STN())}</div><hr>
+    <table style="font-size:11px">
+      <tr><td><b>الكشك</b></td><td class="a"><b>للمنظّم</b></td><td class="a"><b>للكشك</b></td></tr>
+      ${rows.map(r=>`<tr><td>${esc(r.n)}</td>
+        <td class="a"><i>${moneyN(r.d.com)}</i></td>
+        <td class="a"><i>${moneyN(r.d.sum-r.d.com)}</i></td></tr>`).join('')}
+    </table><hr>
+    <table style="font-size:12px">
+      <tr><td><b>الإجمالي</b></td>
+        <td class="a"><b><i>${moneyN(T.com)}</i></b></td>
+        <td class="a"><b><i>${moneyN(T.sum-T.com)}</i></b></td></tr>
+    </table><hr>
+    <div class="tot" style="text-align:center">مجموع المبيعات: <i>${money(T.sum)}</i></div>
+    <div class="ft" style="margin-top:10px">توقيع أمين الصندوق: ________</div>
+    ${cutBlock()}</div>`);
+}
 function printShift(d){
   const s=S.settings, L=n=>lbp(n).toLocaleString('en-US');
   const row=(a,b,c)=>`<tr><td>${a}</td><td class="a"><i>${b}</i></td><td class="a"><i>${c}</i></td></tr>`;
@@ -1346,7 +1382,7 @@ function renderSettings(){
       <button data-x="items" class="${setTab==='items'?'on':''}">الأصناف والأكشاك</button>
       ${isSys()?`<button data-x="sys" class="${SYS?'on':''}">إعدادات النظام</button>`:''}
     </div>
-    ${!isSys()?'<div class="okbox">أنت داخل بصفة <b>مسؤول الأصناف</b> — تستطيع إدارة الأكشاك والأصناف وإيقاف صنف عن البيع. إعدادات النظام والتسوية والتقارير تحتاج رمز النظام.</div>':''}
+    ${!isSys()?'<div class="okbox">أنت داخل بصفة <b>مسؤول الأصناف</b> — تستطيع إدارة الأكشاك والأصناف وإيقاف صنف عن البيع، ومطالعة التقارير. إعدادات النظام والتسوية تحتاج رمز النظام.</div>':''}
     <div style="display:${SYS?'block':'none'}">
     ${STORAGE_OK?'':'<div class="warnbox"><b>تنبيه خطير:</b> هذا المتصفح لا يسمح بالحفظ. كل شيء سيضيع عند إغلاق الصفحة. افتح التطبيق من رابط الإنترنت بدل الملف المحلي، أو استعمل Firefox.</div>'}
     ${STORAGE_OK&&(lb===null||lb>=1)?`<div class="okbox">آخر نسخة احتياطية على القرص: <b>${lb===null?'لم تُحفظ بعد':'منذ '+lb+' يوم'}</b>. احفظ نسخة الآن.</div>`:''}
