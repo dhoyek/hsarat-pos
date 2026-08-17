@@ -246,7 +246,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
    البيانات تُحفظ في المتصفح فور كل عملية.
    =============================================================== */
 const KEY='hsarat_pos_v2', CKEY=KEY+'_cart', BKEY=KEY+'_bak', RKEY=KEY+'_restore', AKEY=KEY+'_auto';
-const APPV='28';
+const APPV='30';
 let STORAGE_OK=true, MEM=null;
 
 const DEFAULTS=()=>({
@@ -356,7 +356,9 @@ function load(){
   S.sales.forEach(s=>s.vouchers.forEach(v=>{ if(v.settled===undefined) v.settled=null; }));
   if(S.settings.footer==='تُسلَّم هذه القسيمة للكشك — لا تُستبدل بنقد') S.settings.footer='';
   if(S.settings.base!=='lbp'&&S.settings.base!=='usd') S.settings.base='usd';
-  S.kiosks.forEach((k,i)=>{ if(k.split===undefined) k.split=false; if(typeof k.ord!=='number') k.ord=i; });
+  S.kiosks.forEach((k,i)=>{ if(k.split===undefined) k.split=false; if(typeof k.ord!=='number') k.ord=i;
+    if(k.owner===undefined) k.owner=''; if(k.phone===undefined) k.phone='';
+    if(k.com===undefined) k.com=''; });
   S.products.forEach((x,i)=>{ if(typeof x.ord!=='number') x.ord=i; });
   try{ const c=localStorage.getItem(CKEY); if(c) cart=JSON.parse(c)||[]; }catch(e){}
 }
@@ -457,6 +459,7 @@ const altAt=(n,r)=>BASE()==='lbp'?usd(n/(Number(r)||RATE())):lbpTxt(n*(Number(r)
 const alt=n=>altAt(n,RATE());
 const altName=()=>BASE()==='lbp'?'بالدولار':'بالليرة';
 const kName=id=>(S.kiosks.find(k=>k.id===id)||{name:'—'}).name;
+const kObj=id=>S.kiosks.find(k=>k.id===id)||{};
 const nowISO=()=>new Date().toISOString();
 const p2=n=>String(n).padStart(2,'0');
 function fmtDT(iso){const d=new Date(iso);return `${p2(d.getDate())}/${p2(d.getMonth()+1)} ${p2(d.getHours())}:${p2(d.getMinutes())}`;}
@@ -491,11 +494,16 @@ const prodsOf=kid=>S.products.filter(x=>x.kiosk===kid).sort(byOrd);
 function reseq(list){ list.forEach((x,i)=>x.ord=i); }
 function moveIn(list,from,to){ const a=list.slice(); const [x]=a.splice(from,1); a.splice(to,0,x); reseq(a); return a; }
 const defCom=()=>Number(S.settings.commission)||0;
-// effective organiser rate for a product (per-item override, else default)
+const hasVal=c=>!(c===undefined||c===null||c==='');
+const clampPct=c=>Math.max(0,Math.min(100,Number(c)||0));
+// organiser rate set on a kiosk (empty = not set)
+function kCom(id){ const k=S.kiosks.find(x=>x.id===id); return (k&&hasVal(k.com))?clampPct(k.com):null; }
+// effective organiser rate for a product: item override › kiosk rate › default
 function pCom(p){
   if(!p) return defCom();
-  const c=p.com;
-  return (c===undefined||c===null||c==='')?defCom():Math.max(0,Math.min(100,Number(c)||0));
+  if(hasVal(p.com)) return clampPct(p.com);
+  const k=kCom(p.kiosk);
+  return k===null?defCom():k;
 }
 // organiser share of a voucher — snapshot taken at sale time, fallback for old data
 function vCom(v){
@@ -917,7 +925,7 @@ function renderSettle(){
     const net=gross-sumCom(out);
     const old=out.filter(v=>daysAgo(v.ts)>=2).length;
     return `<div class="ksum ${out.length?'':'done'}" data-k="${k.id}">
-      <div class="g"><b>${esc(k.name)}</b>
+      <div class="g"><b>${esc(k.name)}</b>${k.owner?` <span class="tag">${esc(k.owner)}</span>`:''}${k.phone?` <span class="tag" style="direction:ltr;unicode-bidi:isolate">${esc(k.phone)}</span>`:''}
         <small>${out.length?`${out.length} قسيمة غير مسوّاة${old?` · منها ${old} أقدم من يومين`:''}`:'لا شيء معلّق — كل القسائم مسوّاة'}</small></div>
       <div class="v"><b>${money(net)}</b><small>المستحق للكشك</small></div>
     </div>`;}).join('');
@@ -1062,6 +1070,8 @@ function printSettlement(st){
     <div class="ev" style="text-align:center">${esc(s.event)}</div><hr>
     <div class="kiosk" style="text-align:center">كشف تسوية ${st.no}</div>
     <div style="text-align:center;font-size:15px;font-weight:800">${esc(kName(st.kiosk))}</div>
+    ${kObj(st.kiosk).owner?`<div style="text-align:center;font-size:12px">${esc(kObj(st.kiosk).owner)}</div>`:''}
+    ${kObj(st.kiosk).phone?`<div style="text-align:center;font-size:12px;direction:ltr;unicode-bidi:isolate">${esc(kObj(st.kiosk).phone)}</div>`:''}
     <div style="text-align:center;font-size:11px">${fmtDT(st.ts)}</div><hr>
     <table>
       <tr><td>عدد القسائم</td><td class="a">${st.nos.length}</td></tr>
@@ -1396,7 +1406,8 @@ function renderSettings(){
         <div class="fld"><label>سعر الصرف (ل.ل. لكل 1$)</label><input id="s_rate" class="num" type="number" step="500" value="${st.rate}"></div>
       </div>
       <div class="mini" style="margin:-4px 0 10px">كل الأسعار والتقارير والتسويات تُعرض بالعملة الأساسية. العملة الثانية تظهر بجانبها للمعلومات فقط.</div>
-      <div class="fld"><label>نسبة المنظّم %</label><input id="s_com" class="num" type="number" step="1" value="${st.commission}"></div>
+      <div class="fld"><label>نسبة المنظّم الافتراضية %</label><input id="s_com" class="num" type="number" step="1" value="${st.commission}"></div>
+      <div class="mini" style="margin:-4px 0 10px">تُطبَّق على كل صنف ما لم تُحدَّد نسبة للكشك أو للصنف. الترتيب: <b>نسبة الصنف › نسبة الكشك › النسبة الافتراضية</b>.</div>
       <div class="fld"><label>رمز المحطة (حرف واحد — يجب أن يختلف عن كل محطة أخرى)</label>
         <input id="s_stn" class="num" maxlength="2" value="${esc(STN())}"></div>
       <div class="mini" style="margin:-4px 0 10px">
@@ -1565,7 +1576,9 @@ function renderSettings(){
   const kord=sortedKiosks();
   kord.forEach((k,i)=>{
     const n=S.products.filter(p=>p.kiosk===k.id).length;
-    const d=el('div','it');d.innerHTML=`<div class="g"><b>${esc(k.name)}</b>${k.split?' <span class="tag">قسيمة لكل وحدة</span>':''}<small>${n} صنف</small></div>`;
+    const meta=[k.owner?esc(k.owner):'', k.phone?'<span style="direction:ltr;unicode-bidi:isolate">'+esc(k.phone)+'</span>':''].filter(Boolean).join(' · ');
+    const kc=kCom(k.id);
+    const d=el('div','it');d.innerHTML=`<div class="g"><b>${esc(k.name)}</b>${k.split?' <span class="tag">قسيمة لكل وحدة</span>':''}${kc===null?'':` <span class="tag" style="background:var(--goldL);color:#6B5210">نسبة الكشك ${kc}%</span>`}<small>${n} صنف${meta?' — '+meta:''}</small></div>`;
     const up=el('button','iconbtn','▲'); up.title='أعلى'; up.disabled=i===0;
     up.onclick=()=>{S.kiosks=moveIn(kord,i,i-1);save();renderSettings();renderKbar();renderGrid();};
     const dn=el('button','iconbtn','▼'); dn.title='أسفل'; dn.disabled=i===kord.length-1;
@@ -1576,7 +1589,7 @@ function renderSettings(){
       if(confirm('حذف '+k.name+'؟')){S.kiosks=S.kiosks.filter(x=>x.id!==k.id);save();renderSettings();renderKbar();renderGrid();}};
     d.appendChild(up);d.appendChild(dn);d.appendChild(e);d.appendChild(b);kl.appendChild(d);});
   $('#kadd').onclick=()=>{const v=$('#kn').value.trim();if(!v)return;
-    S.kiosks.push({id:uid('k'),name:v,split:false,ord:S.kiosks.length});save();renderSettings();renderKbar();renderGrid();};
+    S.kiosks.push({id:uid('k'),name:v,split:false,owner:'',phone:'',ord:S.kiosks.length});save();renderSettings();renderKbar();renderGrid();};
 
   const pl=$('#plist');pl.innerHTML='';
   kord.forEach(k=>{
@@ -1585,8 +1598,8 @@ function renderSettings(){
    pl.appendChild(el('div','ghead',esc(k.name)+' — '+list.length+' صنف'));
    list.forEach((p,i)=>{
     const d=el('div','it');
-    const ov=!(p.com===undefined||p.com===null||p.com==='');
-    d.innerHTML=`<div class="g"><b>${esc(p.name)}</b> <span class="tag">${money(p.price)}</span>${ov?` <span class="tag" style="background:var(--goldL);color:#6B5210">نسبة ${pCom(p)}%</span>`:''}<small style="${p.on===false?'color:var(--red);font-weight:700':''}">${p.on===false?'موقوف عن البيع':'متوفّر'}</small></div>`;
+    const ov=hasVal(p.com), src=ov?'':(kCom(p.kiosk)===null?'':' (الكشك)');
+    d.innerHTML=`<div class="g"><b>${esc(p.name)}</b> <span class="tag">${money(p.price)}</span>${(ov||src)?` <span class="tag" style="background:var(--goldL);color:#6B5210">نسبة ${pCom(p)}%${src}</span>`:''}<small style="${p.on===false?'color:var(--red);font-weight:700':''}">${p.on===false?'موقوف عن البيع':'متوفّر'}</small></div>`;
     const up=el('button','iconbtn','▲'); up.disabled=i===0;
     up.onclick=()=>{moveIn(list,i,i-1);save();renderSettings();renderGrid();};
     const dn=el('button','iconbtn','▼'); dn.disabled=i===list.length-1;
@@ -1654,7 +1667,13 @@ function renderSettings(){
 }
 function editKiosk(k){
   sheet(`<h2>تعديل كشك</h2>
-    <div class="fld"><label>الاسم</label><input id="kne" value="${esc(k.name)}"></div>
+    <div class="fld"><label>اسم الكشك</label><input id="kne" value="${esc(k.name)}"></div>
+    <div class="fld"><label>الاسم الثلاثي لصاحب العلاقة</label><input id="kow" value="${esc(k.owner||'')}" placeholder="اختياري"></div>
+    <div class="fld"><label>رقم الهاتف</label><input id="kph" value="${esc(k.phone||'')}" placeholder="اختياري" inputmode="tel" style="direction:ltr;text-align:left"></div>
+    <div class="fld"><label>نسبة المنظّم لهذا الكشك %</label>
+      <input id="kco" class="num" type="number" min="0" max="100" step="1" placeholder="اتركه فارغاً = الافتراضية ${defCom()}%" value="${hasVal(k.com)?k.com:''}"></div>
+    <div class="mini" style="margin:-4px 0 12px;line-height:1.6">الترتيب: نسبة <b>الصنف</b> إن وُجدت، وإلا نسبة <b>الكشك</b>، وإلا النسبة الافتراضية (${defCom()}%).
+      تغيير النسبة لا يمسّ القسائم المطبوعة سابقاً — تبقى محسوبة بنسبتها وقت البيع.</div>
     <div class="fld"><label><input type="checkbox" id="ksp" ${k.split?'checked':''} style="width:auto;margin-left:6px">قسيمة منفصلة لكل وحدة</label></div>
     <div class="mini" style="margin:-4px 0 12px;line-height:1.6">
       عند التفعيل، إذا طلب الزبون ١٠ قطع من صنف في هذا الكشك تُطبع <b>١٠ قسائم منفصلة</b>، كل واحدة برقم خاص وتُستعمل وحدها.
@@ -1662,6 +1681,8 @@ function editKiosk(k){
     <div style="display:flex;gap:8px"><button class="btn ghost" onclick="closeSheet()">إلغاء</button>
     <button class="btn main" id="ok">حفظ</button></div>`);
   $('#ok').onclick=()=>{k.name=$('#kne').value.trim()||k.name;k.split=$('#ksp').checked;
+    k.owner=$('#kow').value.trim();k.phone=$('#kph').value.trim();
+    k.com=$('#kco').value.trim()===''?'':clampPct($('#kco').value);
     save();closeSheet();renderSettings();renderKbar();renderGrid();};
 }
 function editProduct(p){
@@ -1670,9 +1691,9 @@ function editProduct(p){
     <div class="fld"><label>السعر ${BASE()==='lbp'?'بالليرة':'بالدولار'}</label><input id="ep" class="num" type="number" step="${STEP()}" value="${p.price}"></div>
     <div class="fld"><label>الكشك</label><select id="ek">${sortedKiosks().map(k=>`<option value="${k.id}" ${k.id===p.kiosk?'selected':''}>${esc(k.name)}</option>`).join('')}</select></div>
     <div class="fld"><label>نسبة المنظّم لهذا الصنف %</label>
-      <input id="ec" class="num" type="number" min="0" max="100" step="1" placeholder="اتركه فارغاً = الافتراضية ${defCom()}%" value="${(p.com===undefined||p.com===null||p.com==='')?'':p.com}"></div>
-    <div class="mini" style="margin:-4px 0 12px;line-height:1.6">فارغ = يتبع النسبة الافتراضية (${defCom()}%). اكتب رقماً لتخصيص نسبة مختلفة لهذا الصنف — مثلاً <b>0</b> إذا كان الصنف بلا حصة للمنظّم.
-      تغيير النسبة لا يمسّ القسائم المطبوعة سابقاً؛ تبقى محسوبة بنسبتها وقت البيع.</div>
+      <input id="ec" class="num" type="number" min="0" max="100" step="1" placeholder="اتركه فارغاً = ${kCom(p.kiosk)===null?`الافتراضية ${defCom()}%`:`نسبة الكشك ${kCom(p.kiosk)}%`}" value="${hasVal(p.com)?p.com:''}"></div>
+    <div class="mini" style="margin:-4px 0 12px;line-height:1.6">فارغ = يتبع ${kCom(p.kiosk)===null?`النسبة الافتراضية (${defCom()}%)`:`نسبة الكشك (${kCom(p.kiosk)}%)`}. اكتب رقماً لتخصيص نسبة مختلفة لهذا الصنف — مثلاً <b>0</b> إذا كان الصنف بلا حصة للمنظّم.
+      الترتيب: نسبة الصنف › نسبة الكشك › النسبة الافتراضية. تغيير النسبة لا يمسّ القسائم المطبوعة سابقاً؛ تبقى محسوبة بنسبتها وقت البيع.</div>
     <div class="fld"><label><input type="checkbox" id="eo" ${p.on!==false?'checked':''} style="width:auto;margin-left:6px">متوفّر للبيع</label></div>
     <div style="display:flex;gap:8px"><button class="btn ghost" onclick="closeSheet()">إلغاء</button>
     <button class="btn main" id="ok">حفظ</button></div>`);
