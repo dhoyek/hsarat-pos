@@ -209,6 +209,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
     <button data-t="sell" class="on">البيع</button>
     <button data-t="vch">القسائم</button>
     <button data-t="stl">التسوية</button>
+    <button data-t="inv">المخزون</button>
     <button data-t="rep">التقارير</button>
     <button data-t="set">الإعدادات</button>
   </nav>
@@ -231,6 +232,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
     </div>
     <div id="vch" class="page"><div class="wrap" id="vchWrap"></div></div>
     <div id="stl" class="page"><div class="wrap" id="stlWrap"></div></div>
+    <div id="inv" class="page"><div class="wrap" id="invWrap"></div></div>
     <div id="rep" class="page"><div class="wrap" id="repWrap"></div></div>
     <div id="set" class="page"><div class="wrap" id="setWrap"></div></div>
   </main>
@@ -246,7 +248,7 @@ td.n,th.n{text-align:center;direction:ltr;font-variant-numeric:tabular-nums}
    البيانات تُحفظ في المتصفح فور كل عملية.
    =============================================================== */
 const KEY='hsarat_pos_v2', CKEY=KEY+'_cart', BKEY=KEY+'_bak', RKEY=KEY+'_restore', AKEY=KEY+'_auto';
-const APPV='30';
+const APPV='31';
 let STORAGE_OK=true, MEM=null;
 
 const DEFAULTS=()=>({
@@ -324,11 +326,11 @@ const DEFAULTS=()=>({
     {id:'p57',name:'Wips',price:60000,kiosk:'k_dekkan',on:true,ord:56,com:100},
     {id:'p58',name:'مناديل كلينكس',price:30000,kiosk:'k_dekkan',on:true,ord:57,com:100},
     {id:'p59',name:'7 أكواب',price:50000,kiosk:'k_dekkan',on:true,ord:58,com:100}],
-  sales:[],shifts:[],settlements:[],seq:1000,vseq:1,sseq:0
+  sales:[],shifts:[],settlements:[],stocks:[],seq:1000,vseq:1,sseq:0,stseq:0
 });
 let S=null, cart=[], filterK='all';
 let unlocked=false, role=null, idleTimer=null;   // role: 'sys' (نظام) | 'mgr' (أصناف)
-const PROT=['stl','rep','set'];
+const PROT=['stl','inv','rep','set'];
 
 /* ---------- storage (durable) ---------- */
 function probe(){ try{ localStorage.setItem('__p','1'); localStorage.removeItem('__p'); return true; }catch(e){ return false; } }
@@ -358,8 +360,12 @@ function load(){
   if(S.settings.base!=='lbp'&&S.settings.base!=='usd') S.settings.base='usd';
   S.kiosks.forEach((k,i)=>{ if(k.split===undefined) k.split=false; if(typeof k.ord!=='number') k.ord=i;
     if(k.owner===undefined) k.owner=''; if(k.phone===undefined) k.phone='';
-    if(k.com===undefined) k.com=''; });
-  S.products.forEach((x,i)=>{ if(typeof x.ord!=='number') x.ord=i; });
+    if(k.com===undefined) k.com=''; if(k.inv===undefined) k.inv=false; });
+  S.products.forEach((x,i)=>{ if(typeof x.ord!=='number') x.ord=i;
+    if(x.cost===undefined) x.cost=0; if(x.qty0===undefined) x.qty0=0;
+    if(x.qtyTs===undefined) x.qtyTs=''; if(x.act===undefined) x.act=''; });
+  if(!Array.isArray(S.stocks)) S.stocks=[];
+  if(typeof S.stseq!=='number') S.stseq=0;
   try{ const c=localStorage.getItem(CKEY); if(c) cart=JSON.parse(c)||[]; }catch(e){}
 }
 function save(){
@@ -533,11 +539,12 @@ function applyLock(){
   PROT.forEach(t=>{
     const b=document.querySelector(`nav button[data-t="${t}"]`);
     // مسؤول الأصناف يرى الإعدادات والتقارير؛ التسوية لمسؤول النظام
-    const allow = !L && (t==='set' || t==='rep' || isSys());
+    let allow = !L && (t==='set' || t==='rep' || t==='inv' || isSys());
+    if(t==='inv' && !S.kiosks.some(k=>k.inv)) allow=false;
     if(b) b.style.display=allow?'':'none';
   });
   const cur=document.querySelector('nav button.on');
-  if(cur&&PROT.includes(cur.dataset.t)&&(L||(cur.dataset.t!=='set'&&cur.dataset.t!=='rep'&&!isSys())))
+  if(cur&&PROT.includes(cur.dataset.t)&&(L||(cur.dataset.t!=='set'&&cur.dataset.t!=='rep'&&cur.dataset.t!=='inv'&&!isSys())))
     document.querySelector('nav button[data-t="sell"]').click();
   if(reorderMode&&!canItems()) toggleReorder(false);
   const lp=$('#hLock');
@@ -621,9 +628,10 @@ document.querySelectorAll('nav button').forEach(b=>{
     if(PROT.includes(b.dataset.t)&&isLocked()){ askPin(()=>b.click()); return; }
     document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
     b.classList.add('on');
-    ['sell','vch','stl','rep','set'].forEach(t=>$('#'+t).classList.toggle('on',t===b.dataset.t));
+    ['sell','vch','stl','inv','rep','set'].forEach(t=>$('#'+t).classList.toggle('on',t===b.dataset.t));
     if(b.dataset.t==='vch')renderVouchers();
     if(b.dataset.t==='stl')renderSettle();
+    if(b.dataset.t==='inv')renderInv();
     if(b.dataset.t==='rep')renderReports();
     if(b.dataset.t==='set')renderSettings();
   };
@@ -1085,6 +1093,195 @@ function printSettlement(st){
     ${st.note?`<div class="ft" style="text-align:right">ملاحظة: ${esc(st.note)}</div><hr>`:''}
     <div class="ft" style="margin-top:8px">استلمها: ${esc(st.by||'____________')}</div>
     <div class="ft" style="margin-top:12px">توقيع الكشك: ____________</div>
+    <div class="ft" style="margin-top:12px">توقيع أمين الصندوق: ____________</div>
+    ${cutBlock()}</div>`);
+}
+
+
+/* =============== INVENTORY — كلفة · كميات · جرد =============== */
+let invK=null;
+const invKiosks=()=>sortedKiosks().filter(k=>k.inv);
+// units of a product sold since a given moment (cancelled vouchers never count)
+function soldSince(pid,since){
+  let n=0;
+  S.sales.forEach(s=>{
+    if(since && s.ts<since) return;
+    s.vouchers.forEach(v=>{ if(v.void) return;
+      (v.items||[]).forEach(it=>{ if(it.id===pid) n+=Number(it.qty)||0; }); });
+  });
+  return n;
+}
+function invRows(kid){
+  return prodsOf(kid).map(p=>{
+    const q0=Number(p.qty0)||0, cost=Number(p.cost)||0;
+    const sold=soldSince(p.id,p.qtyTs||'');
+    const exp=q0-sold;
+    const raw=String(p.act===undefined?'':p.act).trim();
+    const has=raw!=='';
+    const act=has?(Number(raw)||0):null;
+    const diff=has?(act-exp):null;          // سالب = نقص
+    const val=(has&&diff<0)?(-diff*cost):0; // قيمة النقص بالكلفة
+    const sur=(has&&diff>0)?(diff*cost):0;  // قيمة الزيادة
+    return {p,q0,cost,sold,exp,act,diff,val,sur,has};
+  });
+}
+function periodStart(kid){
+  const ts=prodsOf(kid).map(p=>p.qtyTs).filter(Boolean).sort();
+  return ts.length?ts[0]:'';
+}
+function renderInv(){
+  const w=$('#invWrap'), ks=invKiosks();
+  if(!ks.length){ w.innerHTML='<div class="empty">لا يوجد كشك مفعّل عليه تتبّع المخزون.<br>فعّله من: الإعدادات ← تعديل الكشك ← «تتبّع المخزون».</div>'; return; }
+  if(!invK||!ks.find(k=>k.id===invK)) invK=ks[0].id;
+  const rows=invRows(invK), k=S.kiosks.find(x=>x.id===invK)||{};
+  const T=rows.reduce((a,r)=>({q0:a.q0+r.q0,sold:a.sold+r.sold,exp:a.exp+r.exp,val:a.val+r.val,sur:a.sur+r.sur,
+    short:a.short+((r.has&&r.diff<0)?1:0),done:a.done+(r.has?1:0),costIn:a.costIn+r.q0*r.cost}),
+    {q0:0,sold:0,exp:0,val:0,sur:0,short:0,done:0,costIn:0});
+  const ps=periodStart(invK);
+  const hist=S.stocks.filter(x=>x.kiosk===invK).slice().reverse();
+
+  w.innerHTML=`
+    ${ks.length>1?`<div class="chips" id="ichips">${ks.map(x=>`<button data-k="${x.id}" class="${x.id===invK?'on':''}">${esc(x.name)}</button>`).join('')}</div>`:''}
+    <div class="okbox">المتبقّي يُحسب تلقائياً: <b>الكمية الأولية − المباع</b>. عند الإقفال عُدّ البضاعة الموجودة فعلاً واكتبها في عمود «الفعلي»، والنظام يحسب الفرق وقيمته بالكلفة.</div>
+    <div class="card">
+      <h3><span>${esc(k.name)} — جرد البضاعة</span><small style="font-size:11px;font-weight:600;color:var(--mut)">${ps?'الفترة من '+fmtDT(ps):'الفترة: من بداية التشغيل'}</small></h3>
+      <div style="overflow-x:auto">
+      <table id="invT">
+        <tr><th>الصنف</th><th class="n">الكلفة</th><th class="n">أولية</th><th class="n">مباع</th><th class="n">متبقّي</th><th class="n">الفعلي</th><th class="n">الفرق</th><th class="n">قيمة النقص</th></tr>
+        ${rows.length?rows.map(r=>`<tr>
+          <td>${esc(r.p.name)}</td>
+          <td class="n">${moneyN(r.cost)}</td>
+          <td class="n"><input class="iq" data-q="${r.p.id}" type="number" min="0" step="1" value="${r.q0}" style="width:62px;padding:4px;text-align:center"></td>
+          <td class="n">${r.sold}</td>
+          <td class="n"><b style="${r.exp<0?'color:var(--red)':''}">${r.exp}</b></td>
+          <td class="n"><input class="ia" data-a="${r.p.id}" type="number" min="0" step="1" value="${r.has?r.act:''}" placeholder="—" style="width:62px;padding:4px;text-align:center;border-color:var(--gold)"></td>
+          <td class="n" style="${r.has?(r.diff<0?'color:var(--red);font-weight:800':(r.diff>0?'color:var(--green);font-weight:800':'')):''}"><span style="direction:ltr;unicode-bidi:isolate">${r.has?(r.diff>0?'+':'')+r.diff:'—'}</span></td>
+          <td class="n" style="${r.val?'color:var(--red);font-weight:800':''}">${r.val?moneyN(r.val):'—'}</td></tr>`).join('')
+        :'<tr><td colspan="8" style="text-align:center;color:var(--mut)">لا أصناف في هذا الكشك</td></tr>'}
+        <tr style="background:var(--greenL);font-weight:800">
+          <td><b>الإجمالي</b></td><td class="n">—</td><td class="n">${T.q0}</td><td class="n">${T.sold}</td>
+          <td class="n">${T.exp}</td><td class="n">${T.done}/${rows.length}</td><td class="n">—</td>
+          <td class="n" style="${T.val?'color:var(--red)':''}">${T.val?moneyN(T.val):'0'}</td></tr>
+      </table></div>
+      <div class="row3" style="margin-top:10px">
+        <button class="btn ghost sm" id="invBlank">🖨 ورقة عدّ فارغة</button>
+        <button class="btn ghost sm" id="invClear">مسح عمود الفعلي</button>
+        <button class="btn main sm" id="invClose">✅ إقفال الجرد</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3><span>خلاصة الفرق</span></h3>
+      <table>
+        <tr><td>قيمة البضاعة الداخلة (بالكلفة)</td><td class="n">${money(T.costIn)}</td></tr>
+        <tr><td>أصناف ناقصة</td><td class="n" style="${T.short?'color:var(--red);font-weight:700':''}">${T.short}</td></tr>
+        <tr><td><b>قيمة النقص على المسؤول</b></td><td class="n"><b style="${T.val?'color:var(--red)':''}">${money(T.val)}</b></td></tr>
+        ${T.sur?`<tr><td>قيمة الزيادة (بضاعة أكثر من المتوقّع)</td><td class="n" style="color:var(--green)">${money(T.sur)}</td></tr>`:''}
+      </table>
+      <div class="mini" style="margin-top:8px">النقص = بضاعة خرجت من الكشك بلا بيع مسجّل. القيمة محسوبة <b>بسعر الكلفة</b> لا بسعر البيع.
+      القسائم الملغاة لا تُحتسب مبيعاً، فبضاعتها يجب أن تكون موجودة بالعدّ.</div>
+    </div>
+
+    <div class="card">
+      <h3><span>سجلّ الجرد (${hist.length})</span></h3>
+      <div class="list" id="stlist"></div>
+    </div>`;
+
+  const ic=$('#ichips');
+  if(ic) ic.querySelectorAll('button').forEach(b=>b.onclick=()=>{invK=b.dataset.k;renderInv();});
+  w.querySelectorAll('.iq').forEach(i=>i.onchange=()=>{
+    const p=S.products.find(x=>x.id===i.dataset.q); if(!p)return;
+    const nq=Math.max(0,Number(i.value)||0);
+    if(nq!==(Number(p.qty0)||0)){ p.qty0=nq; if(!p.qtyTs) p.qtyTs=nowISO(); }
+    save(); renderInv();
+  });
+  w.querySelectorAll('.ia').forEach(i=>i.onchange=()=>{
+    const p=S.products.find(x=>x.id===i.dataset.a); if(!p)return;
+    p.act=i.value.trim()===''?'':Math.max(0,Number(i.value)||0);
+    save(); renderInv();
+  });
+  $('#invBlank').onclick=()=>printCountSheet(invK);
+  $('#invClear').onclick=()=>{ if(!confirm('مسح كل ما أُدخل في عمود «الفعلي»؟'))return;
+    prodsOf(invK).forEach(p=>p.act=''); save(); renderInv(); };
+  $('#invClose').onclick=()=>closeStockDialog(invK);
+
+  const box=$('#stlist');
+  if(!hist.length){ box.innerHTML='<div class="empty">لم يُقفل أي جرد بعد</div>'; }
+  else{
+    box.innerHTML='';
+    hist.forEach(st=>{
+      const d=el('div','it');
+      d.innerHTML=`<div class="g"><b>جرد ${st.no}</b> <span class="tag">${esc(kName(st.kiosk))}</span>
+        <small>${fmtDT(st.ts)} · ${st.lines.length} صنف · نقص <b style="${st.shortVal?'color:var(--red)':''}">${money(st.shortVal)}</b>${st.by?' · المسؤول '+esc(st.by):''}</small></div>`;
+      const pr=el('button','iconbtn','🖨'); pr.title='إعادة طباعة'; pr.onclick=()=>printStock(st);
+      d.appendChild(pr); box.appendChild(d);
+    });
+  }
+}
+function closeStockDialog(kid){
+  const rows=invRows(kid);
+  if(!rows.length){ alert('لا أصناف في هذا الكشك.'); return; }
+  const miss=rows.filter(r=>!r.has).length;
+  sheet(`<h2>إقفال الجرد — ${esc(kName(kid))}</h2>
+    ${miss?`<div class="warnbox">${miss} صنف لم تُدخل له كمية فعلية — سيُعتبر <b>صفر</b> عند الإقفال.</div>`:''}
+    <div class="fld"><label>اسم مسؤول الكشك (الذي جرى معه العدّ)</label><input id="sby" placeholder="الاسم"></div>
+    <div class="fld"><label>ملاحظة (اختياري)</label><input id="snote" placeholder="مثلاً: كسر 3 علب"></div>
+    <div class="mini" style="margin:-4px 0 12px;line-height:1.6">بعد الإقفال: تُطبع ورقة الجرد، وتبدأ <b>فترة جديدة</b> تكون فيها الكمية الأولية لكل صنف = الكمية الفعلية التي عددتها الآن، ويعود عدّاد المباع إلى الصفر.</div>
+    <div style="display:flex;gap:8px"><button class="btn ghost" onclick="closeSheet()">إلغاء</button>
+    <button class="btn main" id="ok">إقفال وطباعة</button></div>`);
+  $('#ok').onclick=()=>{
+    const by=$('#sby').value.trim(), note=$('#snote').value.trim();
+    const R=invRows(kid);
+    const lines=R.map(r=>({id:r.p.id,name:r.p.name,cost:r.cost,q0:r.q0,sold:r.sold,exp:r.exp,
+      act:r.has?r.act:0,diff:(r.has?r.act:0)-r.exp,val:Math.max(0,r.exp-(r.has?r.act:0))*r.cost}));
+    const shortVal=lines.reduce((a,l)=>a+l.val,0);
+    const surVal=lines.reduce((a,l)=>a+(l.diff>0?l.diff*l.cost:0),0);
+    S.stseq=(S.stseq||0)+1;
+    const st={id:uid('j'),no:'J'+STN()+String(S.stseq).padStart(3,'0'),ts:nowISO(),kiosk:kid,by,note,
+      lines,shortVal,surVal,base:BASE(),rate:RATE()};
+    S.stocks.push(st);
+    const t=nowISO();
+    R.forEach(r=>{ r.p.qty0=r.has?r.act:0; r.p.qtyTs=t; r.p.act=''; });
+    save(); closeSheet(); renderInv(); printStock(st);
+  };
+}
+function printCountSheet(kid){
+  const st=S.settings, rows=invRows(kid);
+  doPrint(`<div class="vch" style="text-align:right">
+    <div class="club" style="text-align:center">${esc(st.club)}</div>
+    <div class="ev" style="text-align:center">${esc(st.event)}</div><hr>
+    <div class="kiosk" style="text-align:center">ورقة عدّ — ${esc(kName(kid))}</div>
+    <div style="text-align:center;font-size:11px">${fmtDT(nowISO())}</div><hr>
+    <table>${rows.map(r=>`<tr><td>${esc(r.p.name)}</td><td class="a">______</td></tr>`).join('')}</table><hr>
+    <div class="ft">عُدّ الموجود فعلاً واكتب الرقم جنب كل صنف.</div>
+    <div class="ft" style="margin-top:12px">العادّ: ____________</div>
+    ${cutBlock()}</div>`);
+}
+function printStock(st){
+  const s=S.settings;
+  const k=S.kiosks.find(x=>x.id===st.kiosk)||{};
+  const bad=st.lines.filter(l=>l.diff!==0);
+  doPrint(`<div class="vch" style="text-align:right">
+    <div class="club" style="text-align:center">${esc(s.club)}</div>
+    <div class="ev" style="text-align:center">${esc(s.event)}</div><hr>
+    <div class="kiosk" style="text-align:center">كشف جرد ${st.no}</div>
+    <div style="text-align:center;font-size:15px;font-weight:800">${esc(kName(st.kiosk))}</div>
+    ${k.owner?`<div style="text-align:center;font-size:12px">${esc(k.owner)}</div>`:''}
+    <div style="text-align:center;font-size:11px">${fmtDT(st.ts)}</div><hr>
+    <table>
+      <tr style="font-size:11px"><td><b>الصنف</b></td><td class="q" style="width:46px;padding-left:4px"><b>متوقّع</b></td><td class="q" style="width:42px;padding-left:4px"><b>فعلي</b></td><td class="a" style="width:40px"><b>فرق</b></td></tr>
+      ${st.lines.map(l=>`<tr><td>${esc(l.name)}</td><td class="q" style="width:46px;padding-left:4px">${l.exp}</td><td class="q" style="width:42px;padding-left:4px">${l.act}</td><td class="a" style="width:40px"><span style="direction:ltr;unicode-bidi:isolate">${l.diff>0?'+':''}${l.diff}</span></td></tr>`).join('')}
+    </table><hr>
+    <table>
+      <tr><td>أصناف ناقصة</td><td class="a">${st.lines.filter(l=>l.diff<0).length}</td></tr>
+      ${st.surVal?`<tr><td>قيمة الزيادة</td><td class="a">${money(st.surVal)}</td></tr>`:''}
+    </table>
+    <div class="tot" style="text-align:center">قيمة النقص: <i>${money(st.shortVal)}</i></div>
+    <div style="text-align:center;font-size:11px;direction:ltr;unicode-bidi:isolate">${alt(st.shortVal)}</div><hr>
+    ${st.note?`<div class="ft" style="text-align:right">ملاحظة: ${esc(st.note)}</div><hr>`:''}
+    <div class="ft">القيمة محسوبة بسعر الكلفة.</div>
+    <div class="ft" style="margin-top:10px">مسؤول الكشك: ${esc(st.by||'____________')}</div>
+    <div class="ft" style="margin-top:12px">توقيعه: ____________</div>
     <div class="ft" style="margin-top:12px">توقيع أمين الصندوق: ____________</div>
     ${cutBlock()}</div>`);
 }
@@ -1675,6 +1872,8 @@ function editKiosk(k){
     <div class="mini" style="margin:-4px 0 12px;line-height:1.6">الترتيب: نسبة <b>الصنف</b> إن وُجدت، وإلا نسبة <b>الكشك</b>، وإلا النسبة الافتراضية (${defCom()}%).
       تغيير النسبة لا يمسّ القسائم المطبوعة سابقاً — تبقى محسوبة بنسبتها وقت البيع.</div>
     <div class="fld"><label><input type="checkbox" id="ksp" ${k.split?'checked':''} style="width:auto;margin-left:6px">قسيمة منفصلة لكل وحدة</label></div>
+    <div class="fld"><label><input type="checkbox" id="kiv" ${k.inv?'checked':''} style="width:auto;margin-left:6px">تتبّع المخزون (كلفة · كميات · جرد)</label></div>
+    <div class="mini" style="margin:-4px 0 12px;line-height:1.6">عند التفعيل يظهر هذا الكشك في تبويب <b>المخزون</b>: تُسجَّل كلفة الوحدة والكمية الأولية لكل صنف، ويحسب النظام المتبقّي بعد كل بيع، وعند الإقفال تُدخل الكمية الفعلية ليُحسب الفرق وقيمته بالكلفة.</div>
     <div class="mini" style="margin:-4px 0 12px;line-height:1.6">
       عند التفعيل، إذا طلب الزبون ١٠ قطع من صنف في هذا الكشك تُطبع <b>١٠ قسائم منفصلة</b>، كل واحدة برقم خاص وتُستعمل وحدها.
       مناسب لكشك كوبونات الألعاب. اتركه مطفأً في الأكشاك العادية (قسيمة واحدة تحمل كل الطلب).</div>
@@ -1683,6 +1882,7 @@ function editKiosk(k){
   $('#ok').onclick=()=>{k.name=$('#kne').value.trim()||k.name;k.split=$('#ksp').checked;
     k.owner=$('#kow').value.trim();k.phone=$('#kph').value.trim();
     k.com=$('#kco').value.trim()===''?'':clampPct($('#kco').value);
+    k.inv=$('#kiv').checked;
     save();closeSheet();renderSettings();renderKbar();renderGrid();};
 }
 function editProduct(p){
@@ -1694,13 +1894,22 @@ function editProduct(p){
       <input id="ec" class="num" type="number" min="0" max="100" step="1" placeholder="اتركه فارغاً = ${kCom(p.kiosk)===null?`الافتراضية ${defCom()}%`:`نسبة الكشك ${kCom(p.kiosk)}%`}" value="${hasVal(p.com)?p.com:''}"></div>
     <div class="mini" style="margin:-4px 0 12px;line-height:1.6">فارغ = يتبع ${kCom(p.kiosk)===null?`النسبة الافتراضية (${defCom()}%)`:`نسبة الكشك (${kCom(p.kiosk)}%)`}. اكتب رقماً لتخصيص نسبة مختلفة لهذا الصنف — مثلاً <b>0</b> إذا كان الصنف بلا حصة للمنظّم.
       الترتيب: نسبة الصنف › نسبة الكشك › النسبة الافتراضية. تغيير النسبة لا يمسّ القسائم المطبوعة سابقاً؛ تبقى محسوبة بنسبتها وقت البيع.</div>
+    ${(S.kiosks.find(k=>k.id===p.kiosk)||{}).inv?`
+    <div class="fld"><label>كلفة الوحدة ${BASE()==='lbp'?'بالليرة':'بالدولار'} (شراء)</label>
+      <input id="ecst" class="num" type="number" min="0" step="${STEP()}" value="${Number(p.cost)||0}"></div>
+    <div class="fld"><label>الكمية الأولية (كل ما دخل للكشك)</label>
+      <input id="eq0" class="num" type="number" min="0" step="1" value="${Number(p.qty0)||0}"></div>
+    <div class="mini" style="margin:-4px 0 12px;line-height:1.6">الكلفة تُستعمل لحساب قيمة النقص عند الجرد — لا تظهر للزبون ولا على القسيمة. إذا أدخلت بضاعة إضافية أثناء المناسبة، زد الكمية الأولية بما دخل.</div>`:''}
     <div class="fld"><label><input type="checkbox" id="eo" ${p.on!==false?'checked':''} style="width:auto;margin-left:6px">متوفّر للبيع</label></div>
     <div style="display:flex;gap:8px"><button class="btn ghost" onclick="closeSheet()">إلغاء</button>
     <button class="btn main" id="ok">حفظ</button></div>`);
   $('#ok').onclick=()=>{p.name=$('#en').value.trim()||p.name;p.price=Number($('#ep').value)||p.price;
     p.kiosk=$('#ek').value;p.on=$('#eo').checked;
     const cv=$('#ec').value.trim(); p.com=cv===''?null:Math.max(0,Math.min(100,Number(cv)||0));
-    save();closeSheet();renderSettings();renderGrid();};
+    if($('#ecst')) p.cost=Math.max(0,Number($('#ecst').value)||0);
+    if($('#eq0')){ const nq=Math.max(0,Number($('#eq0').value)||0);
+      if(nq!==(Number(p.qty0)||0)){ p.qty0=nq; if(!p.qtyTs) p.qtyTs=nowISO(); } }
+    save();closeSheet();renderSettings();renderGrid();if($('#inv')&&$('#inv').classList.contains('on'))renderInv();};
 }
 function mergeData(o){
   if(!o||!o.sales||!o.settings){ alert('ملف غير صالح.'); return; }
